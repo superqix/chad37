@@ -1,0 +1,87 @@
+# The bring-up app in the host simulator: every control sends what it should, and nothing is left sounding.
+#   BOARD=smk37 python3 base/tools/build.py app --host
+#   app/build/smk37/host/chordpad-smk37_host app/tests/bringup.txt OUTDIR
+wait 1200
+shot boot.png
+# nothing goes out at boot, whatever the controls' positions
+expect midi_out 0
+ble connect
+wait 30
+out
+
+# keys: key 12 is C4, on channel 1
+keybed 12 down
+wait 30
+out
+keybed 12 up
+wait 30
+expect_out USB 80 3C 00
+expect_out BLE 80 3C 00
+out
+
+# an octave change leaves a held key's note alone
+keybed 12 down
+wait 30
+tap OCT+
+wait 30
+expect octave 1
+keybed 12 up
+wait 30
+expect_out USB 80 3C 00
+out
+keybed 12 down
+wait 30
+expect_out USB 90 48 64
+keybed 12 up
+wait 30
+expect_out USB 80 48 00
+tap OCT-
+wait 30
+out
+
+# pads: on channel 10 from note 36
+pad 0 down 90
+wait 30
+expect_out USB 99 24 64
+shot pad.png
+pad 0 up
+wait 30
+expect_out USB 89 24 00
+out
+
+# knobs: detents, and K5 as a position
+spin K1 3
+wait 30
+expect knob0 3
+expect_out USB B0 46 03
+spin PRESET 2
+wait 30
+expect knob7 2
+expect_out USB B0 4D 02
+master 3200
+wait 60
+expect knob4 100
+expect_out USB B0 4A 64
+out
+
+# faders: the first move after the first reading
+fader 0 10
+wait 30
+out
+fader 0 50
+wait 30
+expect_out USB B0 14 32
+out
+
+# wheels
+wheel mod 40
+wait 30
+expect_out USB B0 01 28
+wheel pitch 127
+wait 30
+expect_out USB E0 7F 7F
+wheel pitch 0
+wait 30
+expect_out USB E0 00 40
+shot controls.png
+out

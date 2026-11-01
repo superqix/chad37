@@ -52,7 +52,7 @@
  */
 #define PLAT_HOST 1
 #ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 199309L       /* clock_gettime under -std=c99 */
+#define _POSIX_C_SOURCE 200112L       /* clock_gettime and, on macOS, snprintf under -std=c99 */
 #endif
 #include <stdio.h>
 #include <stdlib.h>
