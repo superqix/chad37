@@ -426,6 +426,10 @@ static void ble_midi_tap(uint32_t pkt)            /* main loop (locked) or the t
         bo_w++;
     }
 }
+static int ble_midi_out_pending(void)             /* MIDI still waiting for a connected central */
+{
+    return ble_conn && (bo_r != bo_w || bc_r != bc_w);
+}
 static int ms_before(uint16_t a, uint16_t b) { return ((uint32_t)(b - a) & 0x1FFFu) < 4096u && a != b; }
 static void ble_midi_drain(void)                  /* main loop: what waits, as many notifications as the stack takes */
 {

@@ -10,7 +10,7 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 - **No internal sound:** the DX7 and piano go. The headphone jack is silent unless USB audio playback works (tested in M1).
 - **MIDI Suite stops working:** settings move to the device, and a web editor can follow later.
 - **Experimental base:** Erik37 is at v1.2 and tested on an SMK-37 Pro only.
-- **Bluetooth is unproven on this keyboard:** M1 tests it before any feature work.
+- **Bluetooth on this keyboard:** unproven when this plan was written; M1 proved it on an SMK-37 Elite.
 - **Licensing:** our files and the base stay MPL-2.0. JieLi's Bluetooth libraries are closed binaries linked from the AC79 SDK. Before any public release, confirm their terms and the attributions.
 
 ## What stays, changes and goes
@@ -37,7 +37,7 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 
 ### M1: Early proof, with a stop point
 1. Build unmodified Erik37 to prove the toolchain.
-2. **Take the full flash backup before installing** (Method A in the port kit's `02-update-and-recovery.md`): run only the update's check step, send the UBOOT key, then read the flash twice with `jl-uboot-tool`. Check that the SHA-256 values match and `trimdat` is at `0xC1224`. `fm1_install.py` has no check-only option, so add one. Skip this if the PC session already has a verified dump.
+2. **Take the full flash backup before installing** (Method A in the port kit's `02-update-and-recovery.md`): run only the update's check step, send the UBOOT key, then read the flash twice with `jl-uboot-tool`. Check that the SHA-256 values match and `trimdat` is at `0xC1224`. `fm1_install.py --check-only --uboot` does the first two, `tools/smk_backup.py` the reads and checks ([flash-backup.md](flash-backup.md)).
 3. Install a minimal app based on `base/template/`, with Bluetooth on. It shows every control on screen and sends keys over USB and Bluetooth.
 4. **Test and record:**
    - **Bluetooth MIDI:** pairing, reconnecting after power-off, latency, and no crash with the radio running.

@@ -515,6 +515,16 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_reboot();
 }
 
+/* before a reset into UBOOT with the app running: its notes off while USB and Bluetooth can still carry them. USB
+ * drains in the tick; Bluetooth only in ble_poll. At most 100 ms: a host that stops reading never holds the reset up */
+static void release_notes(void)
+{
+    uint32_t t0 = fm1_ms;
+    app_panic();
+    while ((usb_midi_out_pending() || ble_midi_out_pending()) && fm1_ms - t0 < 100u)
+        ble_poll();
+}
+
 static void enter_uboot(const char *why)
 {
     fm1_audio_stop();
@@ -738,6 +748,7 @@ static void fm1_main(void)
                     shown = left;
                 }
             } else if (fm1_ms - t0 > 5000u) {
+                release_notes();
                 enter_uboot("UBOOT");
             }
         }
@@ -763,8 +774,10 @@ static void fm1_main(void)
                 ota_session();                      /* returns only if nothing was committed */
             app_ui_init();
         }
-        if (usb.uboot_req)
+        if (usb.uboot_req) {
+            release_notes();
             enter_uboot("UBOOT (USB)");
+        }
 #if FM1B_CDC
         cdc_task();
 #endif

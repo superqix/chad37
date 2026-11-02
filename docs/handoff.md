@@ -16,6 +16,12 @@ It replaces the `smk37_open` plan. Don't continue that one.
 
 ## Where it stands
 
+**Update, 2026-11-02: M0 and M1 are done on the PC.** The stock map is filled in (`docs/stock-midi-map.md`), the flash
+is backed up (`docs/flash-backup.md`; the dumps stay off the repo), and M1 passed on an SMK-37 Elite: see the results
+table under M1 in `docs/plan.md`. The keyboard is back on stock V016 while features are built. The app now advertises
+over Bluetooth as `Chordpad37` and over USB as `Chordpad37 SMK-37`. The sections below describe the state when this
+handoff was written; "Never done" and the steps under "What to do next" are history.
+
 **Done on the Mac, tested in the host simulator only:**
 - The piano engine, samples, fonts, site and Erik37's tools are removed.
 - `app/app.c` is a bring-up app. It shows every control on screen and sends:
@@ -67,7 +73,7 @@ Milestones M0 and M1 in `docs/plan.md`. In order:
 6. **Take a full flash backup before the first install,** using Method A in `02-update-and-recovery.md` of
    [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37): run only the update's check step, send the UBOOT key,
    read the flash twice with `jl-uboot-tool`, check the SHA-256 values match and `trimdat` is at `0xC1224`.
-   `base/tools/fm1_install.py` has no check-only option yet; add one (its `check()` step is the place).
+   (Done: `fm1_install.py --check-only --uboot` and `tools/smk_backup.py`.)
 7. **Install and test** as listed in M1: Bluetooth MIDI, USB audio, K1–K8 order and direction, K5, faders, wheels,
    pedal, latency, and returning to stock with M-Vave's updater.
 

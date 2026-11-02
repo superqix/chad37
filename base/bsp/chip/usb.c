@@ -228,6 +228,11 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
     }
 }
 
+static int usb_midi_out_pending(void)               /* MIDI still waiting for a configured host */
+{
+    return usb.config && mo_w != mo_r;
+}
+
 /* ------------------------------------------------------- descriptors --- */
 /* Two functions: audio + MIDI (0 audio control, 1 MIDI streaming, 2 audio streaming with FELUCCA_UAC)
  * and, with FELUCCA_CDC, the CDC-ACM console (communication + data). The endpoints never move:
