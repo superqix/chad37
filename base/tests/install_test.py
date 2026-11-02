@@ -68,9 +68,10 @@ class FakeFM1:
     """a MIDI backend with one FM-1 on it"""
 
     def __init__(self, image, identity="FM-1_015", name="FM-1", unplug_after=None, after_write="FM-1_900",
-                 stall_after=None, bad_addr=None, refuse_arm=False):
+                 stall_after=None, bad_addr=None, refuse_arm=False, loader="ota-FM-1_900", ignore_uboot=False):
         self.image, self.unplug_after, self.after_write = image, unplug_after, after_write
         self.refuse_arm, self.armed, self.arms = refuse_arm, False, []
+        self.loader, self.ignore_uboot, self.ubooted = loader, ignore_uboot, False
         self.stall_after, self.bad_addr = stall_after, bad_addr
         self.served = self.bad = self.upgrades = 0
         self.sent, self.links, self.gen, self.lock = [], [], 0, threading.Lock()
@@ -107,6 +108,9 @@ class FakeFM1:
         if d == I.HS_QUERY:
             t = self.identity.encode()
             self.tx(b"\xF0" + I.pack7(bytes([0, 0x59, 0x11, 0, 0, 0]) + t + bytes(28 - len(t))) + b"\xF7")
+        elif d == I.UBOOT_KEY:
+            if self.identity.startswith("ota-") and self.identity.endswith("_900") and not self.ignore_uboot:
+                self.ubooted, self.connected = True, False       # mask-ROM UBOOT: a USB disk now, no MIDI
         elif d == I.UPGRADE:
             if self.identity.startswith("FM1_") and not self.armed:
                 return                          # Open ignores an update it was not armed for
@@ -131,7 +135,7 @@ class FakeFM1:
             if self.stall_after and self.served >= self.stall_after:
                 return
             if addr == I.FINISH_CHECK:
-                threading.Timer(0.05, self.boot, ("ota-FM-1_900", "Felucca Update")).start()
+                threading.Timer(0.05, self.boot, (self.loader, "Felucca Update")).start()
             elif addr == I.FINISH_WRITE:
                 threading.Timer(0.05, self.boot, (self.after_write, "Felucca")).start()
             else:
@@ -340,6 +344,49 @@ def smk37():
     ok(rc == 0 and "SMK-37 Pro_016" in out, "--info finds an SMK-37 on its port name")
 
 
+def backup():
+    """--check-only and --uboot: stock -> Felucca's update loader -> mask-ROM UBOOT, the app area never written"""
+    elite = package("SMK-37 Elite_570100")
+    p, image = pkgfile("elite.fwsc", elite), I.logical_image(elite)
+    stock = dict(identity="SMK-37 Elite_016", name="SMK-37 Elite Midi", loader="ota-SMK-37 Elite_900")
+
+    dev = FakeFM1(image, **stock)
+    rc, out, err = cli([p, "--check-only", "--uboot", "--yes"], dev)
+    ok(rc == 0 and dev.bad == 0 and dev.upgrades == 1 and dev.ubooted and "WL82 UBOOT" in out
+       and "app area is not written" in out, "--check-only --uboot: check step, loader, UBOOT; no write")
+    dev = FakeFM1(image, **stock)
+    rc, out, err = cli([p, "--check-only", "--yes"], dev)
+    ok(rc == 0 and dev.upgrades == 1 and not dev.ubooted and dev.identity == "ota-SMK-37 Elite_900"
+       and "stays in update mode" in out, "--check-only: stops in the loader, no UBOOT")
+    dev = FakeFM1(image, **stock)
+    rc, out, err = cli([p, "--check-only"], dev, answer=False)
+    ok(rc == 1 and dev.upgrades == 0 and "cancelled" in out, "--check-only: answer no -> nothing sent but the handshake")
+    dev = FakeFM1(image, **{**stock, "identity": "SMK-37 Pro_016"})
+    rc, out, err = cli([p, "--check-only", "--uboot", "--yes"], dev)
+    ok(rc == 6 and dev.upgrades == 0 and not dev.ubooted, "--check-only: another model -> exit 6, nothing sent")
+
+    dev = FakeFM1(image, identity="ota-SMK-37 Elite_900", name="Felucca Update")
+    rc, out, err = cli(["--uboot", "--yes"], dev)
+    ok(rc == 0 and dev.ubooted and dev.upgrades == 0, "--uboot alone: a device in Felucca's update mode")
+    dev = FakeFM1(image, **stock)
+    rc, out, err = cli(["--uboot", "--yes"], dev)
+    ok(rc == 6 and not dev.ubooted and I.UBOOT_KEY not in dev.sent, "--uboot alone: the stock app -> exit 6, key not sent")
+    dev = FakeFM1(image, identity="ota-SMK-37 Elite_016", name="SMK-37 Elite Midi")
+    rc, out, err = cli(["--uboot", "--yes"], dev)
+    ok(rc == 6 and I.UBOOT_KEY not in dev.sent, "--uboot alone: the stock update loader -> exit 6, key not sent")
+    dev = FakeFM1(image, identity="ota-SMK-37 Elite_900", name="Felucca Update", ignore_uboot=True)
+    rc, out, err = cli(["--uboot", "--yes"], dev)
+    ok(rc == 4 and "still on USB MIDI" in err, "--uboot: the loader stays on USB MIDI -> exit 4")
+
+    for args in (["--check-only"], [p, "--uboot"], ["--uboot", "--info"]):
+        try:
+            cli(args, FakeFM1(image, **stock))
+            rc = 0
+        except SystemExit as e:
+            rc = e.code
+        ok(rc == 2, f"bad arguments {' '.join(a if a != p else 'PKG' for a in args)} -> exit 2")
+
+
 def against_js():
     clean = ROOT / "template/build/template.fwsc"
     if not shutil.which("node") or not clean.exists():
@@ -360,6 +407,7 @@ installs()
 errors()
 from_open()
 smk37()
+backup()
 against_js()
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"INSTALL TESTS FAILED ({failed})" if failed else "install tests passed")

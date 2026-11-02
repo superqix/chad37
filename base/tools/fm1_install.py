@@ -11,14 +11,24 @@ device asks (SysEx read requests on the logical image) and we answer. Then
 the FM-1 restarts and the installed identity is checked.
 
   fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force]
+  fm1_install.py PACKAGE.fwsc --check-only [--uboot] [--port NAME] [--yes] [--force]
+  fm1_install.py --uboot [--port NAME] [--yes]
   fm1_install.py --info [--port NAME]
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write. Needs mido with python-rtmidi.
 
+--check-only runs step 1 alone: the running firmware checks the package and
+restarts into the package's update loader, and the app area is not written.
+--uboot then sends that loader the UBOOT soft key, and it restarts into the
+chip's mask-ROM bootloader, a USB disk "WL82 UBOOT" that jl-uboot-tool reads:
+a full flash backup before the first install (fm1-to-smk37's Method A).
+Alone, --uboot does the same for a device already in Felucca's update mode.
+
 Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
-loader / no restart), 6 wrong model, or another identity after the install.
+loader / no restart), 6 wrong model, another identity after the install, or
+not in Felucca's update mode for --uboot.
 
 The M-Vave SMK-37 (fm1-base's BOARD=smk37 builds): a package installs only on its own model, exactly (the SMK-37 Pro,
 SMK-37 Elite and MKE-P37 packages each on theirs, never an FM-1's on an SMK-37 or the other way round), also when an
@@ -33,6 +43,7 @@ import time
 
 HS_QUERY = bytes([0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7])
 UPGRADE = bytes([0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
+UBOOT_KEY = bytes([0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7])      # Felucca's app and update loader; not stock firmware
 FINISH_CHECK, FINISH_WRITE = 0xE0000000, 0xF0000000
 MAXDATA = 512
 BLOCKS, BLK, KEEP = 20, 0x30, 0x2F
@@ -53,7 +64,7 @@ STOCK = "FM-1_015"
 STOCK_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "open": 6, "lost": 4, "stopped": 4, "badreq": 4,
-        "noloader": 5, "noreturn": 5, "mismatch": 6}
+        "noloader": 5, "noreturn": 5, "mismatch": 6, "notloader": 6}
 
 
 class InstallError(Exception):
@@ -421,6 +432,33 @@ class Updater:
         self.write(ota, image, step)
         return self.verify(product, step)
 
+    def check_only(self, dev, image, product, step=lambda *a: None):
+        """running firmware -> loader, and stop there: the app area is not written; -> the loader"""
+        if dev.id.open or model_of(dev.id.text) != model_of(product):
+            dev.link.close()
+            raise InstallError("model", f"the device is {dev.id.text}, the package is for {product}")
+        ota = dev if dev.id.loader else self.check(dev, image, step)
+        step("inloader", ota.id.text)
+        return ota
+
+    def uboot(self, ota, step=lambda *a: None):
+        """the UBOOT soft key to Felucca's update loader, which restarts into the mask-ROM bootloader and leaves
+        USB MIDI"""
+        if not ota.id.loader or ota.id.version != 900:
+            ota.link.close()
+            raise InstallError("notloader", f"{ota.id.text} is not Felucca's update loader (ota-..._900): only it "
+                                            "takes the UBOOT key (run --check-only PACKAGE --uboot)")
+        step("uboot", ota.id.text)
+        sent = ota.link.send(UBOOT_KEY)
+        end = time.monotonic() + DELAY["wait_loader"]
+        while sent and not ota.link.lost and time.monotonic() < end:
+            time.sleep(DELAY["retry"])
+        gone = ota.link.lost
+        ota.link.close()
+        if not gone:
+            raise InstallError("stopped", f"{ota.id.text} is still on USB MIDI after the UBOOT key")
+        step("gone")
+
 
 # ------------------------------------------------------------------- CLI ---
 
@@ -458,7 +496,10 @@ class Progress:
         else:
             self.end()
             msg = {"start": f"starting the update on {a}", "loader": "switching to update mode",
-                   "reboot": "restarting", "done": f"done: the FM-1 runs {a}"}[k]
+                   "reboot": "restarting", "done": f"done: the FM-1 runs {a}",
+                   "inloader": f"in update mode: {a} (the app area is not written)",
+                   "uboot": f"sending the UBOOT key to {a}",
+                   "gone": "left USB MIDI: look for the USB disk \"WL82 UBOOT\" (jl-uboot-tool)"}[k]
             print(msg, file=self.out, flush=True)
 
     def put(self, s):
@@ -481,20 +522,46 @@ def run(a, backend, out, ask):
         mode = "update loader (update not finished)" if dev.id.loader else "running"
         print(f"{dev.id.text}  [{mode}]  port: {dev.name}", file=out)
         return 0
+    if not a.package:                       # --uboot alone: a device already in update mode
+        dev = up.find()
+        if not dev:
+            raise not_found(up)
+        print(f"device:  {dev.id.text}  ({dev.name})", file=out)
+        if not a.yes and not ask("Send the UBOOT key? The device leaves USB MIDI for the mask-ROM bootloader. [y/N] "):
+            dev.link.close()
+            print("cancelled", file=out)
+            return 1
+        up.uboot(dev, Progress(out))
+        return 0
     product, image, digest = load_package(a.package, a.force)
     print(f"package: {product}  ({a.package})", file=out)
     dev = up.find()
     if not dev:
         raise not_found(up)
-    print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
-          file=out)
-    if not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
+    if a.check_only:
+        print(f"device:  {dev.id.text}  ({dev.name})" + ("  already in update mode" if dev.id.loader else ""), file=out)
+        prompt = ("Run the check step only? The device restarts in update mode; the app area is not written"
+                  + (", then the UBOOT key" if a.uboot else "") + ". [y/N] ")
+    else:
+        print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
+              file=out)
+        prompt = "Install? Do not unplug the FM-1 while writing. [y/N] "
+    if not a.yes and not ask(prompt):
         dev.link.close()
         print("cancelled", file=out)
         return 1
     prog = Progress(out)
     try:
-        up.install(dev, image, product, prog, digest)
+        if a.check_only:
+            ota = up.check_only(dev, image, product, prog)
+            if a.uboot:
+                up.uboot(ota, prog)
+            else:
+                ota.link.close()
+                print("it stays in update mode, also after a power cycle: run the install to finish, or install "
+                      "the stock package", file=out)
+        else:
+            up.install(dev, image, product, prog, digest)
     finally:
         prog.end()
     return 0
@@ -514,9 +581,17 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
+    ap.add_argument("--check-only", action="store_true",
+                    help="step 1 only: the device restarts in update mode, the app area is not written")
+    ap.add_argument("--uboot", action="store_true",
+                    help="send Felucca's update loader the UBOOT soft key (mask-ROM bootloader, for a flash backup)")
     a = ap.parse_args(argv)
-    if bool(a.info) == bool(a.package):
-        ap.error("give a PACKAGE.fwsc or --info")
+    if bool(a.info) == bool(a.package or a.uboot):
+        ap.error("give a PACKAGE.fwsc, --uboot or --info")
+    if a.package and a.uboot and not a.check_only:
+        ap.error("--uboot with a PACKAGE needs --check-only")
+    if a.check_only and not a.package:
+        ap.error("--check-only needs a PACKAGE.fwsc")
     try:
         if backend is None:
             try:
