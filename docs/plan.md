@@ -25,7 +25,7 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 | Easy Chord | `app/easy_chord.c/.h`, tests, vectors | Copy from `chordpad-SMK37`, branch `easy-chord`; header becomes MPL-2.0 |
 | Stock capture sheet | `docs/stock-midi-map.md` | Copy from the same branch |
 
-`app/fm1.toml`: name `CHORDPAD`, USB product `CHORDPAD SMK-37`, `ble = true`, and our own unused `smk_id_prefix`.
+`app/fm1.toml`: name `CHORDPAD`, USB product `Chordpad37 SMK-37`, `ble = true` with `ble_name` `Chordpad37`, and our own unused `smk_id_prefix`.
 
 ## Milestones
 
