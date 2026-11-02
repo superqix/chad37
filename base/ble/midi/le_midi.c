@@ -7,7 +7,7 @@
  * The rest is MPL-2.0 (LICENSE). */
 /* BLE MIDI peripheral on JieLi's BLE stack: the MIDI service (03B80E5A-EDE8-4B33-A751-6CE34EC4C700) with
  * its one characteristic (7772E5DB-3868-4112-A1A9-F2669D106BF3: read, write without response, notify),
- * advertised with the service UUID and the name "FM-1". Built on the structure of the SDK's
+ * advertised with the service UUID and the name "FM-1" (fm1.toml ble_name: BLE_MIDI_NAME). Built on the structure of the SDK's
  * le_trans_data.c (its event handling and connection-parameter requests), without its test profile.
  *
  *   bt_ble_init()                 the stack is up (BT_STATUS_INIT_OK): profile, advertising
@@ -77,7 +77,11 @@ static const uint8_t profile_data[] = {
 #define ATT_RAM_BUFSIZE      (ATT_CTRL_BLOCK_SIZE + ATT_LOCAL_MTU_SIZE + ATT_SEND_CBUF_SIZE)
 static u8 att_ram_buffer[ATT_RAM_BUFSIZE] __attribute__((aligned(4)));
 
-static const char gap_device_name[] = "FM-1";
+#ifndef BLE_MIDI_NAME
+#define BLE_MIDI_NAME "FM-1"                    /* fm1.toml ble_name */
+#endif
+static const char gap_device_name[] = BLE_MIDI_NAME;
+_Static_assert(sizeof gap_device_name - 1 <= ADV_RSP_PACKET_MAX - 2, "BLE_MIDI_NAME longer than a scan response holds");
 #if BLE_MIDI_CENTRAL
 #define ROLE_SERVER 0                            /* the SDK's MULTI_ROLE_SLAVE / MASTER */
 #define ROLE_CLIENT 1
@@ -582,9 +586,9 @@ static int make_set_adv_data(void)
     u8 offset = 0, *buf = adv_data;
     offset += make_eir_packet_val(&buf[offset], offset, HCI_EIR_DATATYPE_FLAGS, 0x06, 1);
     offset += make_eir_packet_data(&buf[offset], offset, HCI_EIR_DATATYPE_COMPLETE_128BIT_SERVICE_UUIDS, (void *)svc, 16);
-    offset += make_eir_packet_data(&buf[offset], offset, HCI_EIR_DATATYPE_COMPLETE_LOCAL_NAME, (void *)gap_device_name, sizeof gap_device_name - 1);
-    if (offset > ADV_RSP_PACKET_MAX)
-        return -1;
+    /* the name too when it fits beside the uuid (up to 8 characters); the scan response always has it */
+    if (offset + 2 + sizeof gap_device_name - 1 <= ADV_RSP_PACKET_MAX)
+        offset += make_eir_packet_data(&buf[offset], offset, HCI_EIR_DATATYPE_COMPLETE_LOCAL_NAME, (void *)gap_device_name, sizeof gap_device_name - 1);
     log_info("adv_data(%d)\n", offset);
     ble_op_set_adv_data(offset, buf);
     return 0;

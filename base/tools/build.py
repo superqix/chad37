@@ -30,6 +30,8 @@ APP_DIR holds the app (app.h, app.c, its sources) and its fm1.toml:
                              by flags: the register check skips them entirely (it reads the text: x86 asm behind
                              an #if would fail it)
   words = "words.tsv"        the screen reader's words (fm1-reader), relative to APP_DIR
+  ble_name = "..."           the Bluetooth MIDI name (default "FM-1"): printable ASCII, at most 29 characters; up to 8
+                             also go in the advertising packet, longer ones only in the scan response
   ble_central = true         and the FM-1 connects to Bluetooth MIDI devices too (FM1B_BLE_CENTRAL), beside a computer
   usb_audio_in = true        the FM-1 recordable over USB (FM1B_UAC; the default: true)
   usb_audio_out = true       a computer plays through the FM-1 over USB (FM1B_UAC_OUT; the default: true)
@@ -382,6 +384,8 @@ def radio_units():
     # controller's link count, the multi-link stack). Written from the SDK's each build, as this one wants it
     cfg = "apps/demo/demo_ble/include/app_config.h"
     text = (sdk / cfg).read_text(errors="ignore")
+    if BLE and CONF.get("ble_name"):
+        flags.append(f'-DBLE_MIDI_NAME="{ble_name(CONF["ble_name"])}"')
     if BLE and CONF.get("ble_central"):
         flags.append("-DBLE_MIDI_CENTRAL=1")
         for old, new in (("#define TRANS_DATA_EN                             1",
@@ -757,6 +761,14 @@ def usb_name(key, v):
     v = v.replace("FM-1", "SMK-37") if "FM-1" in v else v + " SMK-37"
     if len(v) > 31:
         raise SystemExit(f"usb_product {v!r} on the SMK-37: more than 31 characters")
+    return v
+
+
+def ble_name(v):
+    """fm1.toml ble_name: printable ASCII without quotes or backslashes (it becomes a C string), at most 29
+    characters (a scan response: 31 bytes, 2 of them the field's length and type)"""
+    if not 0 < len(v) <= 29 or any(not (0x20 <= ord(c) < 0x7F) or c in '"\\' for c in v):
+        raise SystemExit(f"ble_name {v!r}: 1 to 29 printable ASCII characters, without quotes or backslashes")
     return v
 
 
