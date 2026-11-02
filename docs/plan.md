@@ -47,6 +47,22 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
    - **The rest:** faders, wheels, pedal, and input-to-MIDI latency.
    - **Return to stock:** M-Vave's updater restores V016 with calibration intact.
 
+**Results, 2026-11-02, on an SMK-37 Elite (V016, flash JEDEC `0x856014`, the FM-1's Puya part): M1 passed.**
+
+| Check | Result |
+|---|---|
+| Toolchain | Proven by our own Elite build. The unmodified Erik37 build was skipped. |
+| Flash backup | Two identical 1 MiB reads, `trimdat` at `0xC1224` ([flash-backup.md](flash-backup.md)). |
+| Install | `fm1_install.py` from stock and over itself. |
+| Bluetooth MIDI | Pairs with a Mac as `Chordpad37`, and reconnects after a power-cycle. Long sessions driving Surge XT, with MIDI Learn and USB audio running at the same time, without a crash. |
+| USB audio | Appears and plays to the line out. Using USB and the line out into the same speakers gave a ground-loop hum. Windows keeps the first name it saw for `1209:0001` on a port (here a GemmaOne FM-1) until the device is uninstalled. |
+| K1–K8 | Panel order, CC 70–77 in the bring-up app. Right raises all eight. They are endless: the app's value moves a few steps per detent. |
+| K5 | It is MASTER: the platform reads it as the volume, and it scales USB audio playback. Whether it stays the volume or becomes a CC only (USB audio then at a fixed level) is an M3 decision. |
+| Faders, wheels | Full range. Pitch bend reaches 1, not 0 (the app's scaling). |
+| Pedal | Not tested: no pedal. |
+| Latency | None noticeable over USB or Bluetooth, by feel. |
+| Return to stock | M-Vave's open workbench (open.m-vave.com, Elite page: Force flash ticked, then Restore factory V16, target `SMK-37 Elite_016`). Stock came back with velocity, pitch-bend rest and pads as captured in M0. |
+
 **Stop and review together if Bluetooth or the return to stock fails.** If only Bluetooth fails, the fallback is a USB and TRS build with `--no-ble`. If the return to stock fails, nothing else proceeds until it's fixed.
 
 The first install clears stock settings in `0x9D000–0xAEFFF`, though stock rebuilds them on return. Calibration, pairing and key data are never written, and `fm1_flash_map.h` enforces this at compile time and again in the flash driver.
