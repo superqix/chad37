@@ -7,9 +7,10 @@ The name is a nod to Erik37 and short for CHord pAD; it was Chordpad37 until 202
 
 **Status: in use on an SMK-37 Elite; not released.** Keys, pads (velocity and pressure), knobs and faders in two banks,
 wheels, pedal and buttons go out over USB, Bluetooth and the TRS jack, on the stock V016 map except the faders (CC
-20–27). CHORD and SCALE modes put Easy Chord on the keys and chords on the pads, with pad assignment, LATCH, voicings,
-auto-strum and an arpeggiator; 8 presets are saved on the keyboard. The Pro and MKE-P37 builds have never been
-installed. Where things stand and what's next: [docs/handoff.md](docs/handoff.md).
+20–27) and knobs K7–K16 (absolute, CC 54–55 and 102–109). CHORD and SCALE modes put Easy Chord on the keys and
+chords on the pads, with pad assignment, LATCH, voicings, auto-strum and an arpeggiator; 8 presets are saved on the
+keyboard. The Pro and MKE-P37 builds have never been installed. Where things stand and what's next:
+[docs/handoff.md](docs/handoff.md).
 
 ## Before installing
 

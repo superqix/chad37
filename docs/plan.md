@@ -79,7 +79,7 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
   - Implemented `app/note_refs.c` (with host unit tests in `tests/note_refs_test.c`) for reference-counted `(channel, note)` ownership, chord morphing, and independent per-transport (`USB`, `BLE`, `TRS`) Note-Off overflow recovery.
   - Reads `plat_keybed_hits`, `plat_keybed_vel`, pads (`plat_pad_hits`, `plat_pads_held`, `plat_pad_vel`, `plat_pad_press`), `plat_enc`, `plat_fader`, `plat_wheels`, `plat_pedal_raw` and buttons (`plat_buttons`, `plat_smk_buttons`), sending all MIDI messages to `TO_USB | TO_BLE | TO_TRS` through a single `send()`.
 - **Knobs and faders (from `docs/stock-midi-map.md`):**
-  - Two knob banks (`KNOB BANK`): Bank 1 (`K1–K6` = CC 48–53 on ch 6 abs `0–127`, `K7` = CC 38 ch 1 rel `69`/`1`, `K8` = CC 37 ch 1 rel `69`/`1`) and Bank 2 (`K9–K16` = CC 30–37 on ch 1 rel `69`/`1`). `K5` supports both `CC+VOL` (default) and `CC ONLY` (USB audio at fixed level via `APP_GAIN`).
+  - Two knob banks (`KNOB BANK`): Bank 1 (`K1–K8` = CC 48–55 on ch 6) and Bank 2 (`K9–K16` = CC 102–109 on ch 1), all absolute `0–127`. Stock makes `K7–K16` relative (`69` per step left, `1` right), which a synth takes as a two-position switch, on CCs that include Data Entry LSB (38) and Bank Select LSB (32). `K5` supports both `CC+VOL` (default) and `CC ONLY` (USB audio at fixed level via `APP_GAIN`).
   - Two fader banks (`FADER BANK`): Bank 1 (`F1–F4` = CC 20–23 ch 1) and Bank 2 (`F5–F8` = CC 24–27 ch 1), with baseline rest pickup at boot and no jump on bank switch. Stock sends CC 64–71, but 64–67 are the sustain, portamento, sostenuto and soft pedals, so a synth took fader 1 as sustain and wouldn't MIDI-learn it; 20–27 are undefined in the MIDI standard. A saved "CPD1" store moves faders still on 64–71 to the new defaults once.
 - **Pads, buttons, wheels, pedal, octave:**
   - Pads send per-pad strike velocity and Channel Pressure (`0xD0 | pad_ch`) once pressure changes from the initial strike reading, returning to `0` before the last pad's Note-Off. Supports `STOCK` (ch 2, notes `16–19, 111–122` with full velocity), `DRUMS` (ch 10, notes `36–51`, default on Preset 2), and `V016` (Pads 1–4 velocity 0 with no release).
@@ -144,7 +144,7 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
 ### After M4 (2026-11-07, on the Elite)
 - **Pad velocity:** the peak is read while the reading still rises (up to 6 samples, about 14 ms), since quick taps
   were read at the curve's floor; `PAD MIN` on the hardware page (K6) sets a velocity floor.
-- **Faders** moved to CC 20–27 (see M3), **LATCH** on `NOTE REPEAT` (see M4 §2), and the `<` `>` arrows send Program
+- **Faders** moved to CC 20–27 and **knobs** K7–K16 to absolute CCs 54–55 and 102–109 (see M3), **LATCH** on `NOTE REPEAT` (see M4 §2), and the `<` `>` arrows send Program
   Change (see M3).
 - Open items and what's untested on the keyboard: [handoff.md](handoff.md).
 

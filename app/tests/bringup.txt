@@ -115,7 +115,7 @@ wait 30
 expect page 0
 out
 
-# knobs Bank 1: K1-K6 are CC 48-53 on ch 6 (0xB5, abs 0..127); K7-K8 are CC 38/37 on ch 1 (0xB0, rel 1 / 69)
+# knobs Bank 1: K1-K8 are CC 48-55 on ch 6 (0xB5, absolute 0..127; stock's K7-K8 were relative, a switch to a synth)
 spin K1 3
 wait 30
 expect knob0 3
@@ -125,38 +125,42 @@ spin SELECT 5
 wait 30
 expect knob5 5
 expect_out USB B5 35 05
-spin ALGO -1
+spin ALGO 2
 wait 30
-expect_out USB B0 26 45
+expect knob6 2
+expect_out USB B5 36 02
 spin PRESET 1
 wait 30
-expect_out USB B0 25 01
+expect_out USB B5 37 01
 master 3200
 wait 60
 expect knob4 100
 expect_out USB B5 34 64
 out
 
-# knobs Bank 2 (KNOB_BANK): K9-K16 are CC 30-37 on ch 1 (0xB0, relative 1 / 69)
+# knobs Bank 2 (KNOB_BANK): K9-K16 are CC 102-109 on ch 1 (0xB0, absolute; undefined CCs, unlike stock's 30-37)
 tap KNOB_BANK
 wait 30
 expect knob_bank 1
 spin K1 1
 wait 30
-expect_out USB B0 1E 01
+expect_out USB B0 66 01
 spin K1 -1
 wait 30
-expect_out USB B0 1E 45
+expect_out USB B0 66 00
 spin SELECT 1
 wait 30
-expect_out USB B0 23 01
+expect_out USB B0 6B 01
 master 3520
 wait 60
-expect_out USB B0 22 01
+expect_out USB B0 6A 6E
 tap KNOB_BANK
 wait 30
 expect knob_bank 0
 out
+
+# a saved store from before (CPD1/CPD2) moves its faders and K7-K16 off stock's defaults once, keeping a user's own
+expect store_migrate 1
 
 # faders Bank 1 (CC 20-23 on ch 1) and Bank 2 (CC 24-27 on ch 1, no jump on bank switch): CCs the MIDI standard
 # leaves undefined, not stock's 64-71 (fader 1 would be the sustain pedal)
@@ -171,7 +175,7 @@ out
 tap FADER_BANK
 wait 30
 expect fader_bank 1
-expect midi_out 36
+expect midi_out 29
 fader 0 75
 wait 30
 expect_out USB B0 18 4B
@@ -214,7 +218,7 @@ out
 # pedal: auto-learns open rest (950), then sends CC 64 on press and release
 pedal 950
 wait 200
-expect midi_out 45
+expect midi_out 38
 pedal 100
 wait 30
 expect_out USB B0 40 7F

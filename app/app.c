@@ -57,19 +57,25 @@ static const uint8_t DRUM_PAD_NOTES[SMK_NPADS] = {
     44, 45, 46, 47, 48, 49, 50, 51
 };
 
-/* Default Knob CC, Channel (0-indexed), and Relative flag across Bank 1 (0..7) and Bank 2 (8..15) */
+/* Default Knob CC, Channel (0-indexed), and Relative flag across Bank 1 (0..7) and Bank 2 (8..15). Every knob sends
+ * an absolute 0..127: K1-K8 CC 48-55 on ch 6, K9-K16 CC 102-109 (undefined) on ch 1. Stock V016 makes K7-K16 relative
+ * (1 per step right, 69 per step left), which a synth takes as a two-position switch, on CCs that include Data Entry
+ * LSB (38) and Bank Select LSB (32) */
 static const uint8_t DEF_KNOB_CC[NBANK_KNOBS] = {
+    48, 49, 50, 51, 52, 53, 54, 55,
+    102, 103, 104, 105, 106, 107, 108, 109
+};
+static const uint8_t DEF_KNOB_CH[NBANK_KNOBS] = {
+    5, 5, 5, 5, 5, 5, 5, 5,
+    0, 0, 0, 0, 0, 0, 0, 0
+};
+static const uint8_t DEF_KNOB_REL[NBANK_KNOBS] = {0};
+/* the knob defaults of a "CPD1" / "CPD2" store (stock V016's), moved once by store_load: K7-K16 relative on ch 1 */
+static const uint8_t OLD_KNOB_CC[NBANK_KNOBS] = {
     48, 49, 50, 51, 52, 53, 38, 37,
     30, 31, 32, 33, 34, 35, 36, 37
 };
-static const uint8_t DEF_KNOB_CH[NBANK_KNOBS] = {
-    5, 5, 5, 5, 5, 5, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0
-};
-static const uint8_t DEF_KNOB_REL[NBANK_KNOBS] = {
-    0, 0, 0, 0, 0, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1
-};
+#define OLD_KNOB_REL0 6u                 /* the first old relative knob, K7 */
 /* CC 20..27, which the MIDI standard leaves undefined. Stock V016 sends 64..71, the first four the sustain, portamento,
  * sostenuto and soft pedals: a synth takes fader 1 as sustain and will not MIDI-learn it */
 static const uint8_t DEF_FADER_CC[NBANK_FADERS] = {20, 21, 22, 23, 24, 25, 26, 27};
@@ -82,8 +88,9 @@ enum { CURVE_FACTORY, CURVE_SOFT, CURVE_HARD, CURVE_FIXED, NCURVES };
 enum { PG_MAIN, PG_EDIT, PG_GLOBAL, PG_SCALE, PG_ARP, PG_HW, NPAGES };
 
 /* --------------------------------------------------------------- store --- */
-#define STORE_MAGIC 0x32445043u          /* "CPD2": the faders' default CCs moved to 20..27 */
-#define STORE_MAGIC_1 0x31445043u        /* "CPD1": the same layout, faders on 64..71 */
+#define STORE_MAGIC 0x33445043u          /* "CPD3": every knob absolute, K7-K8 on CC 54-55, K9-K16 on CC 102-109 */
+#define STORE_MAGIC_2 0x32445043u        /* "CPD2": the same layout, K7-K16 relative on stock's CCs */
+#define STORE_MAGIC_1 0x31445043u        /* "CPD1": as CPD2, faders on 64..71 */
 
 typedef struct {
     char name[12];
@@ -315,20 +322,37 @@ static int store_valid(const presets_store_t *s)
     return 1;
 }
 
+/* An older store (CPD1, CPD2) -> the current one, once: faders and knobs still on their old defaults move to the new
+ * ones; anything else is kept. 1 if s was older and is now valid (save it), else 0 (s untouched unless older) */
+static int store_migrate(presets_store_t *s)
+{
+    uint32_t old = s->magic, i, k;
+    if (old != STORE_MAGIC_1 && old != STORE_MAGIC_2)
+        return 0;
+    s->magic = STORE_MAGIC;
+    if (!store_valid(s))
+        return 0;
+    for (i = 0; i < NPRESETS; i++) {
+        preset_t *p = &s->presets[i];
+        if (old == STORE_MAGIC_1)
+            for (k = 0; k < NBANK_FADERS; k++)
+                if (p->fader_cc[k] == OLD_FADER_CC0 + k)
+                    p->fader_cc[k] = DEF_FADER_CC[k];
+        for (k = OLD_KNOB_REL0; k < NBANK_KNOBS; k++)
+            if (p->knob_rel[k] && p->knob_cc[k] == OLD_KNOB_CC[k] && p->knob_ch[k] == 0) {
+                p->knob_cc[k] = DEF_KNOB_CC[k];
+                p->knob_ch[k] = DEF_KNOB_CH[k];
+                p->knob_rel[k] = 0;
+            }
+    }
+    return 1;
+}
+
 static void store_load(void)
 {
     int ok = plat_store_load(OBJ_PRESETS, &st, sizeof st) == (int)sizeof st;
-    if (ok && st.magic == STORE_MAGIC_1) {        /* once: faders still on the old defaults move to the new ones */
-        uint32_t i, k;
-        st.magic = STORE_MAGIC;
-        if (store_valid(&st)) {
-            for (i = 0; i < NPRESETS; i++)
-                for (k = 0; k < NBANK_FADERS; k++)
-                    if (st.presets[i].fader_cc[k] == OLD_FADER_CC0 + k)
-                        st.presets[i].fader_cc[k] = DEF_FADER_CC[k];
-            mark_dirty();
-        }
-    }
+    if (ok && store_migrate(&st))
+        mark_dirty();
     if (!ok || !store_valid(&st))
         store_defaults();
     palette_set(st.theme);
@@ -1618,8 +1642,8 @@ static void draw_edit_body(const preset_t *pr)
     choice_cell(120, 24, "K3 PADCH", pch);
     choice_cell(178, 24, "K4 PADS", MAP_N[pr->pad_map]);
 
-    cv_text(4, 70, &FONT_XS, "BANK 1: K1-6 CC 48-53 CH 6, K7-8 CC 38/37", C_GRAY);
-    cv_text(4, 88, &FONT_XS, "BANK 2: K9-16 CC 30-37 CH 1 (RELATIVE)", C_GRAY);
+    cv_text(4, 70, &FONT_XS, "BANK 1: K1-8 CC 48-55 CH 6", C_GRAY);
+    cv_text(4, 88, &FONT_XS, "BANK 2: K9-16 CC 102-109 CH 1", C_GRAY);
     cv_text(4, 106, &FONT_XS, "FADERS: F1-4 CC 20-23, F5-8 CC 24-27", C_GRAY);
     cv_text(4, 126, &FONT_T, "PATCH+PAD 1-8: QUICK PRESET   BT: SAVE", C_AMB);
     cv_blit(0, 36);
@@ -1778,6 +1802,43 @@ void app_host_reboot(void)
     memset(&st, 0, sizeof st);
 }
 
+/* store_migrate on a CPD1 store with stock's defaults (faders on 64+, K7-K16 relative) and one knob a user moved:
+ * 1 when every default moved, the user's knob stayed and the result is a valid current store */
+static int host_store_migrate_check(void)
+{
+    static presets_store_t s;
+    uint32_t i, k;
+    s = st;
+    for (i = 0; i < NPRESETS; i++) {
+        preset_t *p = &s.presets[i];
+        for (k = 0; k < NBANK_FADERS; k++)
+            p->fader_cc[k] = (uint8_t)(OLD_FADER_CC0 + k);
+        for (k = OLD_KNOB_REL0; k < NBANK_KNOBS; k++) {
+            p->knob_cc[k] = OLD_KNOB_CC[k];
+            p->knob_ch[k] = 0;
+            p->knob_rel[k] = 1;
+        }
+    }
+    s.presets[2].knob_cc[6] = 99;                          /* preset 3's K7: the user's own CC, kept relative */
+    s.magic = STORE_MAGIC_1;
+    if (!store_migrate(&s) || s.magic != STORE_MAGIC || !store_valid(&s))
+        return 0;
+    for (i = 0; i < NPRESETS; i++) {
+        const preset_t *p = &s.presets[i];
+        for (k = 0; k < NBANK_FADERS; k++)
+            if (p->fader_cc[k] != DEF_FADER_CC[k])
+                return 0;
+        for (k = 0; k < NBANK_KNOBS; k++) {
+            int mine = i == 2 && k == 6;
+            if (mine ? (p->knob_cc[k] != 99 || !p->knob_rel[k] || p->knob_ch[k] != 0)
+                     : (p->knob_cc[k] != DEF_KNOB_CC[k] || p->knob_rel[k] || p->knob_ch[k] != DEF_KNOB_CH[k]))
+                return 0;
+        }
+    }
+    s.magic = STORE_MAGIC;                                  /* a current store is left alone */
+    return !store_migrate(&s);
+}
+
 int app_expect(const char *what, int *got)
 {
     const preset_t *pr = cur_preset();
@@ -1807,6 +1868,8 @@ int app_expect(const char *what, int *got)
         *got = st.pad_vel_min;
     else if (!strcmp(what, "page"))
         *got = ui.page;
+    else if (!strcmp(what, "store_migrate"))
+        *got = host_store_migrate_check();
     else if (!strcmp(what, "dirty"))
         *got = ui.dirty;
     else if (!strcmp(what, "chord_on"))

@@ -49,12 +49,13 @@ Chordpad37 became Chad37: a nod to Erik37, and short for CHord pAD. The boot scr
 | Keys | Velocity 1–127, no stuck notes over hundreds of notes |
 | Pads | Velocity and pressure; after the peak fix (`3943490`), 0 of 109 hits under velocity 20 |
 | Faders | CC 20–27 (fader 1 MIDI-learns in Surge XT); saved presets migrated from 64–71 |
+| Knobs | All 16 absolute 0–127: K1–K8 CC 48–55 ch 6, K9–K16 CC 102–109 ch 1 (stock's relative K7–K16 acted as switches in Surge XT); saved presets migrated |
 | CHORD mode, chord pads, LATCH | Work in Surge XT; latched chords end cleanly |
 | `<` `>` arrows | Program Change; the FM-1 follows, Surge XT ignores Program Change |
 
 ### Not yet tested on the keyboard
 
-- **Knobs and pitch bend** on the M2–M4 firmware. They worked in the M1 bring-up app; nobody has turned them since.
+- **Pitch bend** on the M2–M4 firmware. It worked in the M1 bring-up app; nobody has moved it since.
 - **SCALE mode, Easy Chord on the keys, ARP, auto-strum, PAD MIN, presets 2–8, KNOB / FADER BANK 2.** Host-tested only.
 - **Pedal:** no pedal on hand.
 - **Releasing notes on entering UBOOT** (`release_notes()` in `base/device/main_fm1.c`) with notes held.
@@ -156,7 +157,7 @@ instead. The stock package is also at `C:\GitHub\chordpad-SMK37\firmware\SMK-37 
 | Controller, modes, LATCH, arrows, presets, screen | `app/app.c` (one unity file; `app/app.h` for store objects) |
 | Note ownership and per-transport note-off retry | `app/note_refs.c` |
 | Chords, scales, voicings, strum, arp | `app/chord_scale.c`, `app/easy_chord.c` |
-| Preset store | `presets_store_t` in `app/app.c`, magic `CPD2`, one object of at most 3,840 bytes; `store_load()` migrates `CPD1` |
+| Preset store | `presets_store_t` in `app/app.c`, magic `CPD3`, one object of at most 3,840 bytes; `store_migrate()` moves `CPD1`/`CPD2` stores' faders and knobs off stock's defaults |
 | TRS out driver | `base/bsp/boards/smk37/fm1_trs_tx.h` |
 | Pad scan, velocity peak | `smk__pad()` in `base/bsp/boards/smk37/fm1_input.h` |
 | MIDI send per transport | `plat_midi_send()` in `base/device/plat_fm1.c` |
