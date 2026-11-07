@@ -18,7 +18,6 @@ felucca-bsp (both MPL-2.0, vendored in `base/` and `base/bsp/`, not submodules, 
 
 - **On the keyboard:** an SMK-37 **Elite** runs commit `29ccb99`. Michael plays it into Surge XT over USB and an
   FM-1 over TRS.
-- **Not pushed:** `main` is 9 commits ahead of `origin`. Push only when Michael asks.
 - **Local only:** `docs/review-handoff.md` (an older review by another agent) stays uncommitted at Michael's request.
 
 ### Verified on the Elite
