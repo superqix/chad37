@@ -75,6 +75,51 @@ wait 60
 expect active_notes 0
 out
 
+# LATCH (NOTE REPEAT, host name LFO): a tapped chord pad keeps sounding after it is let go
+tap LFO
+wait 30
+expect latch_on 1
+tappad 0 100
+wait 100
+expect latched_pad 1
+expect active_notes 3
+expect_out USB 90 3C 64
+expect_out USB 90 40 64
+expect_out USB 90 43 64
+out
+# the same pad again stops it, without a new chord
+tappad 0 100
+wait 60
+expect latched_pad 0
+expect active_notes 0
+expect_out USB 80 3C 00
+expect_out USB 80 40 00
+expect_out USB 80 43 00
+out
+# another pad lets it go (here the empty Pad 1, so silence)
+tappad 0 100
+wait 60
+expect active_notes 3
+tappad 1 100
+wait 60
+expect latched_pad 0
+expect active_notes 0
+out
+# LATCH off lets a held chord go
+tappad 0 100
+wait 60
+expect active_notes 3
+tap LFO
+wait 30
+expect latch_on 0
+expect active_notes 0
+out
+# and with LATCH off a tap is a tap again
+tappad 0 100
+wait 60
+expect active_notes 0
+out
+
 # ---------------------------------------------------------------------------
 # 2. CHORD on, SCALE on: Easy Chord + Scale Root transposition + morphing
 # ---------------------------------------------------------------------------

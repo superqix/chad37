@@ -70,7 +70,10 @@ static const uint8_t DEF_KNOB_REL[NBANK_KNOBS] = {
     0, 0, 0, 0, 0, 0, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1
 };
-static const uint8_t DEF_FADER_CC[NBANK_FADERS] = {64, 65, 66, 67, 68, 69, 70, 71};
+/* CC 20..27, which the MIDI standard leaves undefined. Stock V016 sends 64..71, the first four the sustain, portamento,
+ * sostenuto and soft pedals: a synth takes fader 1 as sustain and will not MIDI-learn it */
+static const uint8_t DEF_FADER_CC[NBANK_FADERS] = {20, 21, 22, 23, 24, 25, 26, 27};
+#define OLD_FADER_CC0 64u                /* the defaults of a "CPD1" store, moved once by store_load */
 
 enum { PAD_MAP_STOCK, PAD_MAP_DRUMS, PAD_MAP_V016, NPAD_MAPS };
 enum { PEDAL_AUTO, PEDAL_OPEN, PEDAL_CLOSED, PEDAL_EXPR, NPEDAL_MODES };
@@ -79,7 +82,8 @@ enum { CURVE_FACTORY, CURVE_SOFT, CURVE_HARD, CURVE_FIXED, NCURVES };
 enum { PG_MAIN, PG_EDIT, PG_GLOBAL, PG_SCALE, PG_ARP, PG_HW, NPAGES };
 
 /* --------------------------------------------------------------- store --- */
-#define STORE_MAGIC 0x31445043u          /* "CPD1" */
+#define STORE_MAGIC 0x32445043u          /* "CPD2": the faders' default CCs moved to 20..27 */
+#define STORE_MAGIC_1 0x31445043u        /* "CPD1": the same layout, faders on 64..71 */
 
 typedef struct {
     char name[12];
@@ -139,6 +143,9 @@ static struct {
     uint8_t chord_on;                    /* CHORD mode (B_ENV) */
     uint8_t scale_on;                    /* SCALE mode (B_SEL) */
     uint8_t arp_on;                      /* ARP mode (B_ARP) */
+    uint8_t latch_on;                    /* LATCH (NOTE REPEAT, B_LFO): chord pads sound until tapped again */
+    uint32_t latched_pad;                /* the pad LATCH holds (bit p), kept in pads_on after it is let go */
+    uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
     uint8_t rec_arm;                     /* SEQ REC armed for pad chord assignment */
     cs_chord_t latched_chord;            /* last played/detected chord on keys (for SEQ REC pad store) */
     cs_chord_t key_ec_prev;              /* previous Easy Chord held on keys */
@@ -310,7 +317,19 @@ static int store_valid(const presets_store_t *s)
 
 static void store_load(void)
 {
-    if (plat_store_load(OBJ_PRESETS, &st, sizeof st) != (int)sizeof st || !store_valid(&st))
+    int ok = plat_store_load(OBJ_PRESETS, &st, sizeof st) == (int)sizeof st;
+    if (ok && st.magic == STORE_MAGIC_1) {        /* once: faders still on the old defaults move to the new ones */
+        uint32_t i, k;
+        st.magic = STORE_MAGIC;
+        if (store_valid(&st)) {
+            for (i = 0; i < NPRESETS; i++)
+                for (k = 0; k < NBANK_FADERS; k++)
+                    if (st.presets[i].fader_cc[k] == OLD_FADER_CC0 + k)
+                        st.presets[i].fader_cc[k] = DEF_FADER_CC[k];
+            mark_dirty();
+        }
+    }
+    if (!ok || !store_valid(&st))
         store_defaults();
     palette_set(st.theme);
 }
@@ -399,6 +418,7 @@ static void all_notes_off(void)
     memset(ui.pad_active_chord, 0, sizeof ui.pad_active_chord);
     ui.keys_on = 0;
     ui.pads_on = 0;
+    ui.latched_pad = 0;
     ui.redraw = 1;
 }
 
@@ -584,11 +604,36 @@ static uint8_t pad_note_of(const preset_t *pr, uint32_t p)
     return pr->pad_note[p];
 }
 
+/* LATCH applies while the pads play chords: CHORD on, or SCALE alone (its diatonic pads) */
+static int latch_active(void) { return ui.latch_on && (ui.chord_on || ui.scale_on); }
+
+static void pad_release(uint32_t p)
+{
+    uint32_t b = 1u << p;
+    if ((ui.pads_on & ~b) == 0u && ui.pad_at_sent > 0u) {
+        send(0xD0u | ui.pad_ch_on[p], 0u, 0u);
+        ui.pad_at_sent = 0;
+        ui.pad_at_active = 0;
+    }
+    if (!ui.arp_on) {
+        if (ui.pad_has_note[p] == 1u)
+            note_refs_off(&ui.nr, ui.pad_ch_on[p], ui.pad_note_on[p]);
+        else if (ui.pad_has_note[p] == 2u)
+            cs_strum_release_src(&ui.strum, &ui.nr, (uint8_t)p);
+    }
+    ui.pad_has_note[p] = 0;
+    ui.pad_active_chord[p].count = 0;
+    ui.pads_on &= ~b;
+    ui.latched_pad &= ~b;
+    ui.redraw = 1;
+}
+
 static void pads_input(void)
 {
     preset_t *pr = cur_preset();
     uint32_t hits = plat_pad_hits(), held = plat_pads_held(), p;
     uint8_t max_press = 0, press_moved = 0;
+    int latch = latch_active();
 
     /* Shortcut: holding PATCH (B_HOME) + tapping Pad 1..8 selects Preset 1..8 without sounding a note */
     if ((plat_buttons() & (1u << B_HOME)) && (hits & 0xFFu)) {
@@ -623,25 +668,22 @@ static void pads_input(void)
         }
     }
 
+    /* LATCH: a tap on the held pad stops it (no new chord); a tap on another pad lets it go for that one */
+    if (ui.latched_pad && hits) {
+        uint32_t lp = ui.latched_pad;
+        for (p = 0; p < SMK_NPADS; p++)
+            if (lp >> p & 1u)
+                pad_release(p);
+        if (hits & lp) {
+            hits &= ~lp;
+            app_say("LATCH", "STOPPED");
+        }
+    }
+
     for (p = 0; p < SMK_NPADS; p++) {
         uint32_t b = 1u << p;
-        if ((ui.pads_on & b) && (!(held & b) || (hits & b))) {
-            if ((ui.pads_on & ~b) == 0u && ui.pad_at_sent > 0u) {
-                send(0xD0u | ui.pad_ch_on[p], 0u, 0u);
-                ui.pad_at_sent = 0;
-                ui.pad_at_active = 0;
-            }
-            if (!ui.arp_on) {
-                if (ui.pad_has_note[p] == 1u)
-                    note_refs_off(&ui.nr, ui.pad_ch_on[p], ui.pad_note_on[p]);
-                else if (ui.pad_has_note[p] == 2u)
-                    cs_strum_release_src(&ui.strum, &ui.nr, (uint8_t)p);
-            }
-            ui.pad_has_note[p] = 0;
-            ui.pad_active_chord[p].count = 0;
-            ui.pads_on &= ~b;
-            ui.redraw = 1;
-        }
+        if ((ui.pads_on & b) && !(ui.latched_pad & b) && (!(held & b) || (hits & b)))
+            pad_release(p);
         if (hits & b) {
             uint8_t vel = (uint8_t)pad_floor(apply_curve(plat_pad_vel((int)p)));
             ui.last_pad_vel = vel;
@@ -670,9 +712,11 @@ static void pads_input(void)
                 app_say(cname, "PAD");
                 ui.pad_ch_on[p] = ch;
                 ui.pad_active_chord[p] = c_play;
-                if (held & b) {
+                if ((held & b) || latch) {
                     ui.pads_on |= b;
                     ui.pad_has_note[p] = 2u;
+                    if (latch)
+                        ui.latched_pad = b;
                     if (!ui.arp_on)
                         cs_strum_trigger(&ui.strum, &ui.nr, (uint8_t)p, ch,
                                          c_play.notes, c_play.count, vel,
@@ -1188,6 +1232,18 @@ static void buttons_input(void)
         ui.redraw = 1;
     }
 
+    /* NOTE REPEAT (B_LFO): LATCH for the chord pads, while they play chords; off lets a held chord go */
+    if ((down & (1u << B_LFO)) && (ui.chord_on || ui.scale_on)) {
+        ui.latch_on ^= 1u;
+        if (!ui.latch_on && ui.latched_pad) {
+            for (k = 0; k < SMK_NPADS; k++)
+                if (ui.latched_pad >> k & 1u)
+                    pad_release(k);
+        }
+        app_say("LATCH", ui.latch_on ? "ON" : "OFF");
+        ui.redraw = 1;
+    }
+
     /* SEQ PLAY (CC 56): 127 on press, 0 on release on key_ch */
     if (down & (1u << B_PLAY)) {
         send(0xB0u | pr->key_ch, CC_PLAY, 127u);
@@ -1233,6 +1289,8 @@ static void buttons_input(void)
     for (k = 0; k < NB; k++) {
         if (!(down >> k & 1u))
             continue;
+        if (k == B_LFO && (ui.chord_on || ui.scale_on))
+            continue;
         if (k == B_OCTDN || k == B_OCTUP || k == B_ENV || k == B_SEL || k == B_ARP ||
             k == B_PLAY || k == B_REC || k == B_HOME || k == B_EDIT || k == B_GLO || k == B_SAVE || k == B_FX)
             continue;
@@ -1250,10 +1308,13 @@ static void buttons_input(void)
         mark_dirty();
         app_say("FADER BANK", st.fader_bank ? "F5-F8" : "F1-F4");
     }
-    if (sdown & (1u << SB_LEFT))
-        page_set((int)ui.page - 1);
-    if (sdown & (1u << SB_RIGHT))
-        page_set((int)ui.page + 1);
+    /* < and >: the synth's previous / next patch (Program Change on key_ch); shown 1..128 */
+    if (sdown & ((1u << SB_LEFT) | (1u << SB_RIGHT))) {
+        int32_t prog = clamp((int32_t)ui.program + ((sdown & (1u << SB_RIGHT)) ? 1 : -1), 0, 127);
+        ui.program = (uint8_t)prog;
+        send(0xC0u | pr->key_ch, (uint32_t)prog, 0u);
+        say_control("PROGRAM", prog + 1);
+    }
 
     ui.btn = btn;
     ui.sb = sb;
@@ -1314,6 +1375,8 @@ static void update_leds(uint32_t now_ms)
         b |= 1u << B_SEL;
     if (ui.arp_on)
         b |= 1u << B_ARP;
+    if (latch_active())
+        b |= 1u << B_LFO;
     if (ui.page == PG_EDIT)
         b |= 1u << B_EDIT;
     if (ui.page == PG_GLOBAL || ui.page == PG_HW)
@@ -1391,7 +1454,7 @@ static void draw_header(const preset_t *pr)
         if (ui.rec_arm) {
             cv_text(96, 9, &FONT_XS, "REC PAD", C_WHITE);
         } else {
-            cv_text(92, 9, &FONT_T, ui.chord_on ? "CHD" : "", C_HI);
+            cv_text(92, 9, &FONT_T, latch_active() ? "LAT" : ui.chord_on ? "CHD" : "", C_HI);
             cv_text(114, 9, &FONT_T, ui.scale_on ? "SCL" : "", C_HI);
             cv_text(136, 9, &FONT_T, ui.arp_on ? "ARP" : (st.knob_bank ? "K9" : "K1"), ui.arp_on || st.knob_bank ? C_HI : C_GRAY);
         }
@@ -1533,7 +1596,7 @@ static void draw_edit_body(const preset_t *pr)
 
     cv_text(4, 70, &FONT_XS, "BANK 1: K1-6 CC 48-53 CH 6, K7-8 CC 38/37", C_GRAY);
     cv_text(4, 88, &FONT_XS, "BANK 2: K9-16 CC 30-37 CH 1 (RELATIVE)", C_GRAY);
-    cv_text(4, 106, &FONT_XS, "FADERS: F1-4 CC 64-67, F5-8 CC 68-71", C_GRAY);
+    cv_text(4, 106, &FONT_XS, "FADERS: F1-4 CC 20-23, F5-8 CC 24-27", C_GRAY);
     cv_text(4, 126, &FONT_T, "PATCH+PAD 1-8: QUICK PRESET   BT: SAVE", C_AMB);
     cv_blit(0, 36);
 }
@@ -1728,6 +1791,12 @@ int app_expect(const char *what, int *got)
         *got = ui.scale_on;
     else if (!strcmp(what, "arp_on"))
         *got = ui.arp_on;
+    else if (!strcmp(what, "program"))
+        *got = ui.program;
+    else if (!strcmp(what, "latch_on"))
+        *got = latch_active();
+    else if (!strcmp(what, "latched_pad"))
+        *got = ui.latched_pad ? __builtin_ctz(ui.latched_pad) + 1 : 0;
     else if (!strcmp(what, "rec_arm"))
         *got = ui.rec_arm;
     else if (!strcmp(what, "scale_root"))

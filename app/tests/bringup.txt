@@ -158,14 +158,15 @@ wait 30
 expect knob_bank 0
 out
 
-# faders Bank 1 (CC 64-67 on ch 1) and Bank 2 (CC 68-71 on ch 1, no jump on bank switch)
+# faders Bank 1 (CC 20-23 on ch 1) and Bank 2 (CC 24-27 on ch 1, no jump on bank switch): CCs the MIDI standard
+# leaves undefined, not stock's 64-71 (fader 1 would be the sustain pedal)
 fader 0 10
 wait 30
 out
 fader 0 50
 wait 30
-expect_out USB B0 40 32
-expect_out TRS B0 40 32
+expect_out USB B0 14 32
+expect_out TRS B0 14 32
 out
 tap FADER_BANK
 wait 30
@@ -173,7 +174,7 @@ expect fader_bank 1
 expect midi_out 36
 fader 0 75
 wait 30
-expect_out USB B0 44 4B
+expect_out USB B0 18 4B
 tap FADER_BANK
 wait 30
 expect fader_bank 0
@@ -271,6 +272,29 @@ expect pad_ch 2
 expect page 0
 ble connect
 wait 30
+out
+
+# < and >: Program Change on key_ch (ch 1), the synth's patch, clamped at 0 and 127; the page stays
+tap RIGHT
+wait 30
+expect program 1
+expect_out USB C0 01 00
+expect_out TRS C0 01 00
+expect_out BLE C0 01 00
+tap RIGHT
+wait 30
+expect_out USB C0 02 00
+tap LEFT
+wait 30
+expect program 1
+expect_out USB C0 01 00
+tap LEFT
+wait 30
+tap LEFT
+wait 30
+expect program 0
+expect_out USB C0 00 00
+expect page 0
 out
 
 # queue congestion: stall BLE's 64-event ring while USB & TRS keep draining, overflow BLE with 35 key presses

@@ -133,8 +133,8 @@ Read via `plat_buttons()` (returns bitmask `1u << B_*`) and `plat_smk_buttons()`
 | **OCTAVE+** | OCT+ | `B_OCTUP` | `13` | `5` (`0x36`) | Single LED | Shifts keybed octave up (`-2..+2`) |
 | **KNOB BANK** | *(none)* | `SB_KNOB_BANK` | `0` | `0` (`0x26`) | `plat_smk_leds(1<<0)` | Toggles K1–K8 vs K9–K16 |
 | **FADER BANK** | *(none)* | `SB_FADER_BANK` | `1` | `1` (`0x76`) | `plat_smk_leds(1<<1)` | Toggles F1–F4 vs F5–F8 |
-| **< (LEFT)** | *(none)* | `SB_LEFT` | `2` | `2` (`0x96`) | `plat_smk_leds(1<<2)` | Page / cursor left |
-| **> (RIGHT)** | *(none)* | `SB_RIGHT` | `3` | `3` (`0x56`) | `plat_smk_leds(1<<3)` | Page / cursor right |
+| **< (LEFT)** | *(none)* | `SB_LEFT` | `2` | `2` (`0x96`) | `plat_smk_leds(1<<2)` | Program Change −1 on the key channel (the synth's previous patch; clamped at 0) |
+| **> (RIGHT)** | *(none)* | `SB_RIGHT` | `3` | `3` (`0x56`) | `plat_smk_leds(1<<3)` | Program Change +1 on the key channel (the synth's next patch; clamped at 127) |
 
 > **SMK-37 Button LED Note:** Unlike the FM-1, the SMK-37 button LEDs are driven via 74HC595 shift registers in 2 multiplexed groups and **do not support PWM dim glow** (`dim_buttons` is ignored on SMK-37; LEDs are strictly on/off).
 

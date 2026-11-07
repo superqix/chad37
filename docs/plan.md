@@ -80,9 +80,10 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
   - Reads `plat_keybed_hits`, `plat_keybed_vel`, pads (`plat_pad_hits`, `plat_pads_held`, `plat_pad_vel`, `plat_pad_press`), `plat_enc`, `plat_fader`, `plat_wheels`, `plat_pedal_raw` and buttons (`plat_buttons`, `plat_smk_buttons`), sending all MIDI messages to `TO_USB | TO_BLE | TO_TRS` through a single `send()`.
 - **Knobs and faders (from `docs/stock-midi-map.md`):**
   - Two knob banks (`KNOB BANK`): Bank 1 (`K1–K6` = CC 48–53 on ch 6 abs `0–127`, `K7` = CC 38 ch 1 rel `69`/`1`, `K8` = CC 37 ch 1 rel `69`/`1`) and Bank 2 (`K9–K16` = CC 30–37 on ch 1 rel `69`/`1`). `K5` supports both `CC+VOL` (default) and `CC ONLY` (USB audio at fixed level via `APP_GAIN`).
-  - Two fader banks (`FADER BANK`): Bank 1 (`F1–F4` = CC 64–67 ch 1) and Bank 2 (`F5–F8` = CC 68–71 ch 1), with baseline rest pickup at boot and no jump on bank switch.
+  - Two fader banks (`FADER BANK`): Bank 1 (`F1–F4` = CC 20–23 ch 1) and Bank 2 (`F5–F8` = CC 24–27 ch 1), with baseline rest pickup at boot and no jump on bank switch. Stock sends CC 64–71, but 64–67 are the sustain, portamento, sostenuto and soft pedals, so a synth took fader 1 as sustain and wouldn't MIDI-learn it; 20–27 are undefined in the MIDI standard. A saved "CPD1" store moves faders still on 64–71 to the new defaults once.
 - **Pads, buttons, wheels, pedal, octave:**
   - Pads send per-pad strike velocity and Channel Pressure (`0xD0 | pad_ch`) once pressure changes from the initial strike reading, returning to `0` before the last pad's Note-Off. Supports `STOCK` (ch 2, notes `16–19, 111–122` with full velocity), `DRUMS` (ch 10, notes `36–51`, default on Preset 2), and `V016` (Pads 1–4 velocity 0 with no release).
+  - `<` and `>` (under the pad bank) send Program Change −1 / +1 on `key_ch` to step the synth's patch, shown as 1–128; the number starts at 0 each session (a synth can't report its patch). Pages are reached by their own buttons.
   - `SEQ PLAY` sends CC 56 (`127` down / `0` up) and `SEQ REC` sends CC 57 (`127` down / `0` up) on `key_ch`.
   - Pedal supports `AUTO` (auto-learned open/closed rest, ignoring floating middle readings), `OPEN`, `CLOSED` (CC 64), and `EXPR` (CC 11). `OCT−` and `OCT+` held 5 s remains reserved for update mode.
 - **Presets (`OBJ_PRESETS`):**
@@ -105,6 +106,8 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
 - **Latch on play:** In `CHORD` mode (`CHORD` only or `CHORD + SCALE`), playing a chord on the keys displays its detected name and notes on screen and latches it as the last played chord (so keys can either remain held or be released before assigning).
 - **Arm & assign:** Press **SEQ REC** (`B_REC`) to arm pad assignment (`SEQ REC` red LED lights and pads blink red). Tap any pad (`P0..P15`) to store the latched/held chord to that pad without sounding a drum note; **SEQ REC automatically turns off** after the assignment.
 - **Stored chord format:** Each pad stores up to **6 raw MIDI notes** plus detected `(root, type)` metadata so both arbitrary manual fingered voicings and Easy Chords (highest root wins if multiple Easy Chords are held) are preserved accurately.
+
+- **Latch (`NOTE REPEAT` = `B_LFO`):** while the pads play chords (`CHORD` on, or `SCALE` alone), `NOTE REPEAT` toggles LATCH (its light, and `LAT` in the header). A tapped chord pad keeps sounding after it is let go; another pad switches to its chord (an empty pad just stops it); the latched pad again stops it; LATCH off, a mode or preset change, or `FX` panic lets it go. With `ARP` on, the arpeggiator keeps running on the latched chord.
 
 #### 3. Scale Mode & Knobs (`SCALE` = `B_SEL`, `PATCH` = `B_HOME`)
 - **Page & knob focus:** Pressing **SCALE** turns Scale mode on (lights `SCALE` LED) and opens the **Scale Page** on screen, assigning `K1..K4` to edit Scale parameters:
