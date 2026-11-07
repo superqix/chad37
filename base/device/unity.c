@@ -95,6 +95,9 @@ static volatile uint32_t fm1_ms;  /* milliseconds since boot (TIMER4-based, TIME
 #if FM1B_TRS
 #include "midi_uart.c"
 #endif
+#if BOARD_SMK37
+#include "fm1_trs_tx.h"
+#endif
 
 static uint8_t flash_ok;          /* JEDEC id matched at boot */
 static void audio_silence(void);

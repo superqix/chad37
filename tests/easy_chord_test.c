@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 Michael Wilson
  * Checks app/easy_chord.c against results generated from Chordcade's engine. */
 #include "easy_chord.h"
 #include <stdio.h>
@@ -95,6 +96,33 @@ static void check_names(void)
     }
 }
 
+static void check_bounds(void)
+{
+    uint8_t tones[EASY_CHORD_MAX_TONES];
+    char name[12]={"untouched"};
+    if(easy_chord_tones(128,EASY_CHORD_MAJOR,tones)!=0 ||
+       easy_chord_tones(60,EASY_CHORD_TYPES,tones)!=0 ||
+       easy_chord_tones(60,EASY_CHORD_MAJOR,0)!=0) {
+        puts("tones bounds check");
+        failures++;
+    }
+    if(strcmp(easy_chord_suffix(EASY_CHORD_TYPES),"")!=0) {
+        puts("suffix bounds check");
+        failures++;
+    }
+    easy_chord_name(128,EASY_CHORD_MAJOR,name);
+    if(name[0]!=0) {
+        puts("name root bounds check");
+        failures++;
+    }
+    name[0]='x';
+    easy_chord_name(60,EASY_CHORD_TYPES,name);
+    if(name[0]!=0) {
+        puts("name type bounds check");
+        failures++;
+    }
+}
+
 int main(void)
 {
     unsigned count=sizeof vectors/sizeof vectors[0];
@@ -102,6 +130,7 @@ int main(void)
     check_capacity();
     check_top_note_clamps();
     check_names();
+    check_bounds();
     printf("%u vectors, %u failures\n",count,failures);
     return failures?1:0;
 }

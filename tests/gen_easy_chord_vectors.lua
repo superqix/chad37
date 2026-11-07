@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: MPL-2.0
+-- Copyright (C) 2026 Michael Wilson
 -- Generates tests/easy_chord_vectors.inc by driving Chordcade's real engine, so the C port is
 -- checked against Chordcade rather than against itself. Run from a Chordcade checkout:
 --   cd ~/GitHub/chorg && lua ~/GitHub/chordpad37/tests/gen_easy_chord_vectors.lua > ~/GitHub/chordpad37/tests/easy_chord_vectors.inc

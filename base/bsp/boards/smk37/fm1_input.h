@@ -134,6 +134,7 @@ static volatile struct {
     uint16_t pad_raw[SMK_NPAD], pad_base[SMK_NPAD], pad_peak[SMK_NPAD];
     uint8_t pad_st[SMK_NPAD];    /* 0 idle, 1..SMK_PAD_PEAKN collecting the peak, 0x80 on */
     uint8_t pad_low[SMK_NPAD];
+    uint8_t pad_vel[SMK_NPAD];   /* MIDI velocity 1..127 of each pad's last strike */
     uint8_t pad_press[SMK_NPAD]; /* pressure 0..127 while on */
     uint16_t fad_acc[4];         /* faders: 0..1023 IIR */
     uint8_t fader[4];            /* 0..127 */
@@ -484,7 +485,10 @@ static void smk__pad(uint32_t p, uint32_t raw)
         }
         fm1_in.pad_st[p] = 0x80;
         fm1_in.pad_low[p] = 0;
-        smk__padq(p, smk_vel7(smk_curve(p, fm1_in.pad_peak[p])));
+        fm1_in.pad_vel[p] = smk_vel7(smk_curve(p, fm1_in.pad_peak[p]));
+        fm1_in.pad_press[p] = (uint8_t)(raw <= 0x200u ? raw >> 4 : (raw - 0x200u) / 4u + 32u > 127u ? 127u
+                                                                          : (raw - 0x200u) / 4u + 32u);
+        smk__padq(p, fm1_in.pad_vel[p]);
         return;
     }
     fm1_in.pad_press[p] = (uint8_t)(raw <= 0x200u ? raw >> 4 : (raw - 0x200u) / 4u + 32u > 127u ? 127u

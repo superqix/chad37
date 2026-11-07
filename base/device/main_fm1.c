@@ -52,7 +52,7 @@ static void render_block(int32_t *o)                /* ALNK0: one half, measured
             if (radio_quiet)
                 continue;
 #if FELUCCA_UAC_OUT
-            uac_play(o + 2u * k, REND_FRAMES, master_pos * master_pos >> 12);   /* the computer's audio, at MASTER */
+            uac_play(o + 2u * k, REND_FRAMES, APP_GAIN(master_pos));   /* the computer's audio, at APP_GAIN */
 #endif
 #if FELUCCA_UAC
             uac_tap(o + 2u * k, REND_FRAMES);       /* the USB audio input: the same master output */
@@ -126,6 +126,9 @@ void fm1_timer5_irq(void)
     if (fm1b_dbg.in_audio)
         fm1b_dbg.nested++;
     fm1_input_tick();
+#if BOARD_SMK37
+    smk_trs_tx_tick();
+#endif
     /* 2 kHz: all USB SIE traffic lives here. This ISR now nests into the audio render (so the key
      * matrix keeps its rhythm, below); USB shares the MIDI queues with the audio ISR, so a poll that
      * falls inside the render waits for the first tick outside it, as it did before the nesting. */
@@ -515,14 +518,22 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_reboot();
 }
 
-/* before a reset into UBOOT with the app running: its notes off while USB and Bluetooth can still carry them. USB
- * drains in the tick; Bluetooth only in ble_poll. At most 100 ms: a host that stops reading never holds the reset up */
+/* before a reset into UBOOT or an OTA session with the app running: its notes off while USB and Bluetooth can still
+ * carry them. USB drains in the tick; Bluetooth only in ble_poll. Calling app_panic on each pass lets an app with
+ * more pending note-offs than one 64-entry queue holds flush the rest as slots free up. At most 100 ms: a host that
+ * stops reading never holds the reset up */
 static void release_notes(void)
 {
     uint32_t t0 = fm1_ms;
-    app_panic();
-    while ((usb_midi_out_pending() || ble_midi_out_pending()) && fm1_ms - t0 < 100u)
+    do {
+        app_panic();
         ble_poll();
+    } while ((usb_midi_out_pending() || ble_midi_out_pending()
+#if BOARD_SMK37
+              || smk_trs_tx_pending()
+#endif
+              ) &&
+             fm1_ms - t0 < 100u);
 }
 
 static void enter_uboot(const char *why)
@@ -683,6 +694,9 @@ static void fm1_main(void)
 #if FM1B_TRS
     uart_midi_init();                               /* before TIMER5: it read-modify-writes port H too */
 #endif
+#if BOARD_SMK37
+    smk_trs_tx_init();                              /* UART1 TX on PC7 at 31,250 baud (drained by TIMER5) */
+#endif
     /* above ALNK0 (3): the key / encoder / LED matrix is scanned one column per tick and must keep
      * its rhythm through a render (X0X's finding: below the audio, turns lost steps and LEDs flickered) */
     fm1_timer5_start(isr_timer5, 4);
@@ -769,7 +783,7 @@ static void fm1_main(void)
         ota_service();                              /* M-UPGRADE handshake (other SysEx is dropped) */
         if (usb.ota_req) {
             usb.ota_req = 0;
-            app_panic();                            /* silence: the update rewrites the flash */
+            release_notes();                            /* silence: the update rewrites the flash */
             if (flash_ok)
                 ota_session();                      /* returns only if nothing was committed */
             app_ui_init();

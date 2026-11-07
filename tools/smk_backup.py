@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
 """A full flash backup of an SMK-37 in the chip's mask-ROM bootloader (the USB disk "WL82 UBOOT"), read twice
 with jl-uboot-tool (https://github.com/kagaimiq/jl-uboot-tool) and checked. Only reads: nothing is written.
 After the method in fm1-to-smk37's docs/02-update-and-recovery.md, section 3 (Method A).
@@ -51,7 +52,12 @@ def find_disk():
     ps = ("Get-Disk | Where-Object { $_.FriendlyName -match 'UBOOT' } | "
           "Select-Object Number, FriendlyName | ConvertTo-Json -Compress")
     r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
-    found = json.loads(r.stdout) if r.stdout.strip() else []
+    if r.returncode:
+        fail(3, f"Get-Disk failed (exit {r.returncode}): {r.stderr.strip() or 'give --device'}")
+    try:
+        found = json.loads(r.stdout) if r.stdout.strip() else []
+    except json.JSONDecodeError as e:
+        fail(3, f"could not parse Get-Disk output ({e}); give --device")
     found = [found] if isinstance(found, dict) else found
     if not found:
         fail(3, "no disk named UBOOT: is the keyboard in the mask-ROM bootloader (fm1_install.py ... --check-only --uboot)?")
@@ -71,7 +77,10 @@ def is_admin():
 def read(tool, device, dest, timeout):
     """one full read, its output shown as it comes (tqdm's progress is on stderr); -> the flash id the tool
     printed (or None)"""
-    cmd = [sys.executable, "-u", str(tool), "--device", device, "--chip", "wl82", f"read 0 {SIZE:#x} {dest}"]
+    dest = Path(dest)
+    stage = Path(tool).parent / f".{dest.name}.part" if any(c.isspace() for c in str(dest)) else None
+    arg_dest = stage.name if stage else str(dest)
+    cmd = [sys.executable, "-u", str(tool), "--device", device, "--chip", "wl82", f"read 0 {SIZE:#x} {arg_dest}"]
     print("$ " + " ".join(cmd), flush=True)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, cwd=Path(tool).parent)
     out = []
@@ -88,10 +97,14 @@ def read(tool, device, dest, timeout):
         p.wait(timeout)
     except subprocess.TimeoutExpired:
         p.kill()
+        if stage and stage.exists():
+            stage.unlink()
         fail(4, f"jl-uboot-tool gave nothing back in {timeout} s: power-cycle the keyboard, "
                 "send the key again (fm1_install.py --uboot) and run this again")
     t.join(2)
-    if p.returncode or not Path(dest).exists():
+    if stage and stage.exists():
+        stage.replace(dest)
+    if p.returncode or not dest.exists():
         fail(4, f"jl-uboot-tool failed (exit {p.returncode})")
     m = re.search(r"ID:\s*0x([0-9a-fA-F]+)", b"".join(out).decode(errors="replace"))
     return int(m[1], 16) if m else None
@@ -134,7 +147,11 @@ def main(argv=None):
         fail(2, f"{out} already holds a dump: give another --out")
     ids = [read(a.tool, device, d, a.timeout) for d in dumps]
     bad, sha = report(*dumps)
-    fid = ids[0]
+    if ids[0] != ids[1]:
+        msg = f"the two reads reported different flash ids ({ids[0]!r} vs {ids[1]!r})"
+        print(f"FAIL {msg}")
+        bad.append(msg)
+    fid = ids[0] if ids[0] is not None else ids[1]
     if fid is None:
         print("note: the flash id was not in jl-uboot-tool's output")
     elif fid not in FLASH_IDS:

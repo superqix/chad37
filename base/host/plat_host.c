@@ -20,6 +20,7 @@
  *   midi [PORT] B0 B1 B2         incoming MIDI message (PORT: USB, the default, BLE or TRS; hex bytes)
  *   ble connect | ble link | ble disconnect   a central listening, or linked and not yet listening (FM1B_BLE: the
  *                                stand-in stack is ready a second after the start)
+ *   stall PORT on|off            hold or resume draining PORT's 64-event output ring (PORT: USB or BLE)
  *   wav FILE | wavstop           start / stop recording the output
  *   peakreset                    restart the output peak (expect peak_db_min / peak_db_max)
  *   shot FILE.png                save the screen
@@ -106,6 +107,7 @@ uint32_t plat_buttons(void) { return held_btn; }
 #if BOARD_SMK37
 /* the SMK-37's pads, keybed, faders, wheels and their lights (plat.h), from the script */
 static uint32_t hsmk_sb, hsmk_led_lit, hsmk_pads_held, hsmk_pad_hit, hsmk_pad_rgb[SMK_NPADS];
+static uint8_t hsmk_pad_vel[SMK_NPADS], hsmk_pad_press[SMK_NPADS];
 static uint64_t hsmk_bed, hsmk_bed_hit;
 static uint8_t hsmk_bed_vel[SMK_NKEYBED];   /* each key's last velocity ("keybed K down VEL", default 100) */
 static int hsmk_pedal = 1023;               /* the PEDAL jack ("pedal RAW"): an open jack reads high */
@@ -139,6 +141,8 @@ uint32_t plat_pad_hits(void)
     return hsmk_layout == SMK_PADS_OWN ? h : 0u;
 }
 uint32_t plat_pads_held(void) { return hsmk_pads_held; }
+int plat_pad_vel(int pad) { return pad >= 0 && pad < SMK_NPADS ? hsmk_pad_vel[pad] : 0; }
+int plat_pad_press(int pad) { return pad >= 0 && pad < SMK_NPADS ? hsmk_pad_press[pad] : 0; }
 int plat_fader(int i) { return i >= 0 && i < 4 ? hsmk_fad[i] : -1; }
 int plat_wheels(int32_t *pitch, int32_t *modw)
 {
@@ -192,6 +196,7 @@ void plat_sense(int on) { sense_on = on; }
 uint32_t plat_analog_mask(void) { return 0xFFFFFu; }    /* the keys on rows PA7 / PA8: keys 0..19 (the top row: 20..26) */
 
 #define MQ 256
+#define TXQ 64u
 static uint32_t min_q[MQ], mi_w, mi_r;
 static FILE *midi_log;
 static uint32_t midi_out_count, clock_out_count;
@@ -199,6 +204,8 @@ static uint32_t min_port[MQ];
 static uint32_t out_pkt[4096], out_to[4096], n_out;   /* what went out since the script's last "out" */
 static int ble_state, ble_conn, bdev_state;   /* bdev_state: the Bluetooth MIDI device (BLE_DEV_*) */
 static uint32_t midi_n[NPORTS][2], midi_t[NPORTS][2];   /* plat_midi_count */
+static uint32_t tx_w[NPORTS], tx_r[NPORTS], tx_drops[NPORTS];
+static uint8_t tx_stall[NPORTS];
 static void midi_counted(int port, int out, uint32_t pkt)
 {
     if ((pkt >> 8 & 0xFFu) >= 0xF8u)             /* clock, start, stop, active sensing: not counted, no light */
@@ -210,6 +217,16 @@ uint32_t plat_midi_count(int port, int out) { return port >= 0 && port < NPORTS 
 uint32_t plat_midi_ago(int port, int out)
 {
     return port < 0 || port >= NPORTS || !midi_t[port][!!out] ? 0xFFFFFFFFu : plat_ms() - midi_t[port][!!out];
+}
+uint32_t plat_midi_drops(int port) { return port >= 0 && port < NPORTS ? tx_drops[port] : 0; }
+static void tx_drain(void)                       /* up to one 64-byte packet (16 MIDI events) per ms per port */
+{
+    int p;
+    for (p = 0; p < NPORTS; p++)
+        if (!tx_stall[p] && tx_w[p] != tx_r[p]) {
+            uint32_t n = tx_w[p] - tx_r[p];
+            tx_r[p] += n > 16u ? 16u : n;
+        }
 }
 int plat_midi_in(uint32_t *pkt, int *port)       /* the script's "midi" */
 {
@@ -224,29 +241,64 @@ int plat_midi_in(uint32_t *pkt, int *port)       /* the script's "midi" */
         midi_counted(p, 0, *pkt);
     return 1;
 }
-void plat_midi_send(uint32_t pkt, uint32_t to)
+uint32_t plat_midi_send(uint32_t pkt, uint32_t to)
 {
-    to &= TO_USB | TO_BLE;
+#if BOARD_SMK37
+    uint32_t ok = to & (TO_USB | TO_BLE | TO_TRS), sent = 0;
+#else
+    uint32_t ok = to & (TO_USB | TO_BLE), sent = 0;
+#endif
+    to = ok;
     if ((to & TO_BLE) && !ble_conn && bdev_state != BLE_DEV_READY)   /* as the device: nothing queues for no one */
         to &= ~TO_BLE;
-    if (!to)
-        return;
-    if (to & TO_USB)
-        midi_counted(PORT_USB, 1, pkt);
-    if (to & TO_BLE)
-        midi_counted(PORT_BLE, 1, pkt);
+    if (to & TO_USB) {
+        if (tx_w[PORT_USB] - tx_r[PORT_USB] >= TXQ) {
+            tx_drops[PORT_USB]++;
+            ok &= ~TO_USB;
+        } else {
+            tx_w[PORT_USB]++;
+            midi_counted(PORT_USB, 1, pkt);
+            sent |= TO_USB;
+        }
+    }
+    if (to & TO_BLE) {
+        if (tx_w[PORT_BLE] - tx_r[PORT_BLE] >= TXQ) {
+            tx_drops[PORT_BLE]++;
+            ok &= ~TO_BLE;
+        } else {
+            tx_w[PORT_BLE]++;
+            midi_counted(PORT_BLE, 1, pkt);
+            sent |= TO_BLE;
+        }
+    }
+#if BOARD_SMK37
+    if (to & TO_TRS) {
+        if (tx_w[PORT_TRS] - tx_r[PORT_TRS] >= TXQ) {
+            tx_drops[PORT_TRS]++;
+            ok &= ~TO_TRS;
+        } else {
+            tx_w[PORT_TRS]++;
+            midi_counted(PORT_TRS, 1, pkt);
+            sent |= TO_TRS;
+        }
+    }
+#endif
+    if (!sent)
+        return ok;
     midi_out_count++;
     if (n_out < 4096) {
         out_pkt[n_out] = pkt;
-        out_to[n_out++] = to;
+        out_to[n_out++] = sent;
     }
     if (((pkt >> 8) & 0xFF) == 0xF8) {
         clock_out_count++;
-        return;
+        return ok;
     }
     if (midi_log)
-        fprintf(midi_log, "%u ms: %02X %02X %02X ->%s%s\n", now_ms, (pkt >> 8) & 0xFF, (pkt >> 16) & 0xFF,
-                (pkt >> 24) & 0xFF, to & TO_USB ? " USB" : "", to & TO_BLE ? " BLE" : "");
+        fprintf(midi_log, "%u ms: %02X %02X %02X ->%s%s%s\n", now_ms, (pkt >> 8) & 0xFF, (pkt >> 16) & 0xFF,
+                (pkt >> 24) & 0xFF, sent & TO_USB ? " USB" : "", sent & TO_BLE ? " BLE" : "",
+                sent & TO_TRS ? " TRS" : "");
+    return ok;
 }
 
 /* Bluetooth (FM1B_BLE): a stand-in for the stack, ready a second after the start, and its log */
@@ -322,6 +374,7 @@ void plat_ble_enable(int on)
     if (!on) {
         bdev_state = BLE_DEV_OFF;
         ble_conn = ble_link = 0;
+        tx_r[PORT_BLE] = tx_w[PORT_BLE];
         ble_state = BLE_OFF;
         ble_say("switched off");
     } else {
@@ -427,7 +480,7 @@ const char *plat_ble_log_line(int back)
         return "";
     return ble_log[(ble_log_n - 1u - (uint32_t)back) % 8];
 }
-void plat_midi_out(uint32_t pkt) { plat_midi_send(pkt, TO_USB); }
+void plat_midi_out(uint32_t pkt) { (void)plat_midi_send(pkt, TO_USB); }
 void plat_log(const char *line) { ble_say(line); }
 /* the data area (plat.h): a simulated flash, erased at the start, kept across a simulated reboot */
 static uint8_t data_area[PLAT_DATA_HI - PLAT_DATA_LO];
@@ -682,6 +735,10 @@ static double now_ns(void)
 
 static void boot(void)
 {
+    memset(tx_w, 0, sizeof tx_w);
+    memset(tx_r, 0, sizeof tx_r);
+    memset(tx_drops, 0, sizeof tx_drops);
+    memset(tx_stall, 0, sizeof tx_stall);
     palette_set(APP_PALETTE);                       /* as the device does at boot */
     app_init();
     lcd_fill(0, 0, 240, 240, 0);
@@ -702,6 +759,7 @@ static void run_ms(uint32_t ms)
     uint32_t i, k;
     for (i = 0; i < ms; i++) {
         now_ms++;
+        tx_drain();
         ble_tick();
 #if FM1B_WIFI
         wifi_tick();
@@ -819,7 +877,17 @@ static int expect(const char *what, const char *val)
         got = bdev_state;
     else if (!strcmp(what, "midi_in_usb"))          /* plat_midi_count: messages in from USB */
         got = (int)plat_midi_count(PORT_USB, 0);
+    else if (!strcmp(what, "usb_drops"))
+        got = (int)plat_midi_drops(PORT_USB);
+    else if (!strcmp(what, "ble_drops"))
+        got = (int)plat_midi_drops(PORT_BLE);
+    else if (!strcmp(what, "trs_drops"))
+        got = (int)plat_midi_drops(PORT_TRS);
 #if BOARD_SMK37
+    else if (!strncmp(what, "pad_vel", 7) && what[7] >= '0' && what[7] <= '9' && atoi(what + 7) < SMK_NPADS)
+        got = plat_pad_vel(atoi(what + 7));
+    else if (!strncmp(what, "pad_press", 9) && what[9] >= '0' && what[9] <= '9' && atoi(what + 9) < SMK_NPADS)
+        got = plat_pad_press(atoi(what + 9));
     else if (!strncmp(what, "pad", 3) && what[3] >= '0' && what[3] <= '9' && atoi(what + 3) < SMK_NPADS)
         got = (int)hsmk_pad_rgb[atoi(what + 3)];
     else if (!strcmp(what, "smk_leds"))
@@ -854,7 +922,7 @@ static int expect(const char *what, const char *val)
 #if BOARD_SMK37
 static void run_ms(uint32_t ms);
 /* the SMK-37's script commands (the header); 1 = handled */
-static int hsmk_cmd(const char *cmd, const char *a, const char *b, const char *c)
+static int hsmk_cmd(const char *cmd, const char *a, const char *b, const char *c, const char *d)
 {
     static const char *const SB_N[NSB] = {"KNOB_BANK", "FADER_BANK", "LEFT", "RIGHT"};
     int i;
@@ -877,13 +945,25 @@ static int hsmk_cmd(const char *cmd, const char *a, const char *b, const char *c
         if (p >= SMK_NPADS)
             return 0;
         if (down) {
+            int v = atoi(cmd[0] == 't' ? b : c);      /* tappad P [VEL], pad P down [VEL] [PRESS] */
+            const char *ps = cmd[0] == 't' ? c : d;
+            int pr;
+            hsmk_pad_vel[p] = (uint8_t)(v > 0 && v < 128 ? v : 100);
+            pr = ps[0] ? atoi(ps) : hsmk_pad_vel[p];
+            hsmk_pad_press[p] = (uint8_t)(pr < 0 ? 0 : pr > 127 ? 127 : pr);
             hsmk_pads_held |= 1u << p;
             hsmk_pad_hit |= 1u << p;
+        } else if (cmd[0] == 'p' && !strcmp(b, "press")) {
+            int pr = atoi(c);
+            hsmk_pad_press[p] = (uint8_t)(pr < 0 ? 0 : pr > 127 ? 127 : pr);
+            return 1;
         }
         if (cmd[0] == 't')
             run_ms(60);
-        if (cmd[0] == 't' || !strcmp(b, "up"))
+        if (cmd[0] == 't' || !strcmp(b, "up")) {
             hsmk_pads_held &= ~(1u << p);
+            hsmk_pad_press[p] = 0;
+        }
         return 1;
     }
     if (!strcmp(cmd, "keybed") || !strcmp(cmd, "tapbed")) {
@@ -983,7 +1063,7 @@ int main(int argc, char **argv)
             continue;
 #endif
 #if BOARD_SMK37
-        if (hsmk_cmd(cmd, a, b, c))                  /* the SMK-37's own buttons, pads, keybed, faders, wheels */
+        if (hsmk_cmd(cmd, a, b, c, d))               /* the SMK-37's own buttons, pads, keybed, faders, wheels */
             continue;
 #endif
         if (!strcmp(cmd, "wait"))
@@ -1072,18 +1152,28 @@ int main(int argc, char **argv)
                 ble_say("connected");
             } else if (!strcmp(a, "disconnect")) {
                 ble_conn = ble_link = 0;
+                tx_r[PORT_BLE] = tx_w[PORT_BLE];
                 ble_say("disconnected: reason 13");
             } else {
                 printf("line %d: ble %s: the stack is not ready\n", lineno, a);
                 fails++;
             }
             run_ms(2);
+        } else if (!strcmp(cmd, "stall")) {
+            int p = find_name(PORT_N, NPORTS, a);
+            if (p < 0 || (strcmp(b, "on") && strcmp(b, "off"))) {
+                printf("line %d: stall %s %s: expected USB|BLE|TRS on|off\n", lineno, a, b);
+                fails++;
+            } else {
+                tx_stall[p] = (uint8_t)!strcmp(b, "on");
+            }
         } else if (!strcmp(cmd, "out")) {
             uint32_t i;
             for (i = 0; i < n_out; i++)
                 if (((out_pkt[i] >> 8) & 0xFF) != 0xF8)
-                    printf("  out %02X %02X %02X ->%s%s\n", (out_pkt[i] >> 8) & 0xFF, (out_pkt[i] >> 16) & 0xFF,
-                           out_pkt[i] >> 24, out_to[i] & TO_USB ? " USB" : "", out_to[i] & TO_BLE ? " BLE" : "");
+                    printf("  out %02X %02X %02X ->%s%s%s\n", (out_pkt[i] >> 8) & 0xFF, (out_pkt[i] >> 16) & 0xFF,
+                           out_pkt[i] >> 24, out_to[i] & TO_USB ? " USB" : "", out_to[i] & TO_BLE ? " BLE" : "",
+                           out_to[i] & TO_TRS ? " TRS" : "");
             n_out = 0;
         } else if (!strcmp(cmd, "expect_out")) {
             fails += expect_out(a, mk_pkt(b, c, d));

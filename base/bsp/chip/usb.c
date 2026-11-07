@@ -176,6 +176,7 @@ static struct {
     uint8_t sysex[16];
     uint8_t sx_len, sx_on;
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
+    volatile uint8_t tx_busy;    /* EP1 IN packet loaded into the SIE, waiting for the host's IN token */
     volatile uint8_t uboot_req;
     volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
 } usb;
@@ -219,18 +220,21 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
     return 1;
 }
 
-static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
+static int midi_out_event(uint32_t pkt)             /* from the audio ISR: 1 queued, 0 off, -1 full */
 {
-    if (usb.config && mo_w - mo_r < MQ) {
-        midi_out_q[mo_w % MQ] = pkt;
-        RING_PUBLISH();
-        mo_w++;
-    }
+    if (!usb.config)
+        return 0;
+    if (mo_w - mo_r >= MQ)
+        return -1;
+    midi_out_q[mo_w % MQ] = pkt;
+    RING_PUBLISH();
+    mo_w++;
+    return 1;
 }
 
 static int usb_midi_out_pending(void)               /* MIDI still waiting for a configured host */
 {
-    return usb.config && mo_w != mo_r;
+    return *(volatile uint8_t *)&usb.config && !usb.suspended && (mo_w != mo_r || usb.tx_busy);
 }
 
 /* ------------------------------------------------------- descriptors --- */
@@ -555,6 +559,7 @@ static void uac_rate_set(uint32_t hz)
 
 static void ep1_config(void)
 {
+    usb.tx_busy = 0;
     fm1_usb_ep_txbuf(1, ep1tx);
     fm1_usb_ep_rxbuf(1, ep1rx);
     sie_wr(S_INDEX, 1);
@@ -722,8 +727,10 @@ static void ep0_service(void)
         usb.config = s[2];
         if (usb.config == 1u)
             ep1_config();
-        else
+        else {
+            usb.tx_busy = 0;
             sie_wr(S_INTRRX1E, 0);
+        }
 #if FELUCCA_UAC
         if (usb.config != 1u)
             uac_stream(0);
@@ -1032,16 +1039,17 @@ static void ep1_tx(void)
 {
     uint32_t csr, n = 0;
 #if FELUCCA_OTA
-    if (mo_w == mo_r && so_w == so_r)
+    if (!usb.tx_busy && mo_w == mo_r && so_w == so_r)
         return;
 #else
-    if (mo_w == mo_r)
+    if (!usb.tx_busy && mo_w == mo_r)
         return;
 #endif
     sie_wr(S_INDEX, 1);
     csr = sie_rd(S_TXCSR1);
     if (csr & 0x01u)
         return;                                         /* previous packet still pending */
+    usb.tx_busy = 0;
     if (csr & 0x80u)
         sie_wr(S_TXCSR1, csr & ~0x80u);
 #if FELUCCA_OTA
@@ -1072,6 +1080,7 @@ static void ep1_tx(void)
     if (!n)
         return;
     fm1_usb_ep_send(1, ep1tx, n);
+    usb.tx_busy = 1;
     sie_wr(S_TXCSR1, sie_rd(S_TXCSR1) | 0x01u);
     usb.tx_pkts++;
 }
@@ -1471,6 +1480,7 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
         sie_wr(S_FADDR, 0);
         usb.config = 0;
         usb.suspended = 0;
+        usb.tx_busy = 0;
         mo_r = mo_w;                                    /* nothing stale for the next host */
         usb.sx_on = 0;
 #if FELUCCA_OTA
@@ -1524,6 +1534,7 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 static void usb_start(void)                             /* boot, or main-loop retry while usb.up == 0 */
 {
     usb.timeouts = 0;
+    usb.tx_busy = 0;
     fm1_usb_reset();                                    /* reset whatever the ROM left */
     fm1_delay_ms(25);
     fm1_usb_attach(ep0buf);
@@ -1554,6 +1565,7 @@ static void usb_detach(void)
 {
     usb.detached = 1;
     usb.up = 0;
+    usb.tx_busy = 0;
     fm1_usb_off();
 }
 

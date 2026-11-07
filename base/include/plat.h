@@ -47,15 +47,17 @@ void plat_glow(int on);
 void plat_play_red(int red);
 
 /* MIDI: 4-byte USB-MIDI event packets (byte 0 = cable / CIN, then status, data 1, data 2). In from USB, the TRS jack
- * (in only: the FM-1 has no MIDI out jack) and Bluetooth (FM1B_BLE); out to USB and Bluetooth. */
+ * (FM-1: MIDI in; SMK-37: MIDI out) and Bluetooth (FM1B_BLE); out to USB, Bluetooth and (on BOARD_SMK37) TRS. */
 enum { PORT_USB, PORT_BLE, PORT_TRS, NPORTS };
 #define TO_USB (1u << PORT_USB)
 #define TO_BLE (1u << PORT_BLE)
+#define TO_TRS (1u << PORT_TRS)
 int plat_midi_in(uint32_t *pkt, int *port);   /* 1 = got one, from port PORT_* (port may be 0) */
-void plat_midi_send(uint32_t pkt, uint32_t to);   /* to: TO_USB | TO_BLE; main loop, the render or the tick */
+uint32_t plat_midi_send(uint32_t pkt, uint32_t to);   /* to: TO_USB | TO_BLE | TO_TRS; returns bits not dropped on overflow */
 void plat_midi_out(uint32_t pkt);      /* plat_midi_send(pkt, TO_USB) */
 uint32_t plat_midi_count(int port, int out);   /* messages through port PORT_* since the start (out: sent), real-time (clock...) left out */
 uint32_t plat_midi_ago(int port, int out);     /* ms since the last one (0xFFFFFFFF: none yet) */
+uint32_t plat_midi_drops(int port);            /* outgoing packets dropped because port PORT_*'s queue was full */
 
 /* Bluetooth MIDI (fm1.toml ble = true: FM1B_BLE 1): JieLi's BT libraries on fm1-base's shim (ble/), started at
  * every boot unless the last Bluetooth run crashed (then by hand: plat_ble_start). The app gives it a store object,
@@ -166,6 +168,8 @@ int plat_keybed_vel(int k);            /* key k's last press: its velocity 1..12
 int plat_pedal_raw(void);              /* the PEDAL jack: the raw reading 0..1023 (polarity is the pedal's), -1 none */
 uint32_t plat_pad_hits(void);          /* SMK_PADS_OWN: pad presses since the last call, bit p = pad p */
 uint32_t plat_pads_held(void);         /* pads held, bit p = pad p (any layout) */
+int plat_pad_vel(int pad);             /* pad p's last strike velocity 1..127 (the factory curves); 0 = none yet */
+int plat_pad_press(int pad);           /* pad p's pressure while held, 0..127 (0 when up) */
 int plat_fader(int i);                 /* fader 0..3: 0..127, -1 while the readings settle */
 int plat_wheels(int32_t *pitch, int32_t *modw);   /* 1 = new values: pitch -127..127 (0 at rest), mod 0..127 */
 void plat_pad_rgb(int pad, uint8_t r, uint8_t g, uint8_t b);   /* pad p's light (with plat_pad_lights(1)) */

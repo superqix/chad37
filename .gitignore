@@ -3,6 +3,7 @@ build/
 demos/*.wav
 app/build/
 app/web/
+tools/fm1-emu/
 *.o
 *.exe
 __pycache__/

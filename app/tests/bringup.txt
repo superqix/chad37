@@ -1,22 +1,32 @@
-# The bring-up app in the host simulator: every control sends what it should, and nothing is left sounding.
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
+# The M3 controller in the host simulator: Stock V016 mappings, 2 knob & fader banks, pads with velocity
+# and channel pressure, buttons, wheels, pedal, 8 presets with auto-save across reboot, and Note-Off recovery.
 #   BOARD=smk37 python3 base/tools/build.py app --host
 #   app/build/smk37/host/chordpad-smk37_host app/tests/bringup.txt OUTDIR
 wait 1200
 shot boot.png
 # nothing goes out at boot, whatever the controls' positions
 expect midi_out 0
+expect preset 1
+expect key_ch 1
+expect pad_ch 2
 ble connect
 wait 30
 out
 
-# keys: key 12 is C4, on channel 1
+# keys: key 12 is C4 (note 60 = 0x3C), on channel 1
 keybed 12 down
 wait 30
+expect_out USB 90 3C 64
+expect_out BLE 90 3C 64
+expect_out TRS 90 3C 64
 out
 keybed 12 up
 wait 30
 expect_out USB 80 3C 00
 expect_out BLE 80 3C 00
+expect_out TRS 80 3C 00
 out
 
 # an octave change leaves a held key's note alone
@@ -37,51 +47,291 @@ wait 30
 expect_out USB 80 48 00
 tap OCT-
 wait 30
+expect octave 0
 out
 
-# pads: on channel 10 from note 36
-pad 0 down 90
+# pads (Preset 1 = Stock map on channel 2: P0..P3 = 16..19, P4..P15 = 111..122) with velocity and channel pressure
+pad 0 down 92 45
 wait 30
-expect_out USB 99 24 64
+expect pad_vel0 92
+expect pad_press0 45
+expect_out USB 91 10 5C
+expect_out BLE 91 10 5C
+expect_out TRS 91 10 5C
 shot pad.png
+pad 0 press 88
+wait 10
+expect pad_press0 88
+expect_out USB D1 58 00
+expect_out TRS D1 58 00
 pad 0 up
 wait 30
-expect_out USB 89 24 00
+expect pad_press0 0
+# channel pressure returns to 0 before the note-off (as on stock V016)
+expect_out USB D1 00 00
+expect_out USB 81 10 00
+expect_out BLE 81 10 00
+expect_out TRS 81 10 00
 out
 
-# knobs: detents, and K5 as a position
+# tappad on Pad 5 (index 4 = note 111 = 0x6F) with custom strike velocity
+tappad 4 115
+wait 60
+expect pad_vel4 115
+expect pad_press4 0
+expect_out USB 91 6F 73
+expect_out TRS 91 6F 73
+expect_out USB 81 6F 00
+expect_out TRS 81 6F 00
+out
+
+# knobs Bank 1: K1-K6 are CC 48-53 on ch 6 (0xB5, abs 0..127); K7-K8 are CC 38/37 on ch 1 (0xB0, rel 1 / 69)
 spin K1 3
 wait 30
 expect knob0 3
-expect_out USB B0 46 03
-spin PRESET 2
+expect_out USB B5 30 03
+expect_out TRS B5 30 03
+spin SELECT 5
 wait 30
-expect knob7 2
-expect_out USB B0 4D 02
+expect knob5 5
+expect_out USB B5 35 05
+spin ALGO -1
+wait 30
+expect_out USB B0 26 45
+spin PRESET 1
+wait 30
+expect_out USB B0 25 01
 master 3200
 wait 60
 expect knob4 100
-expect_out USB B0 4A 64
+expect_out USB B5 34 64
 out
 
-# faders: the first move after the first reading
+# knobs Bank 2 (KNOB_BANK): K9-K16 are CC 30-37 on ch 1 (0xB0, relative 1 / 69)
+tap KNOB_BANK
+wait 30
+expect knob_bank 1
+spin K1 1
+wait 30
+expect_out USB B0 1E 01
+spin K1 -1
+wait 30
+expect_out USB B0 1E 45
+spin SELECT 1
+wait 30
+expect_out USB B0 23 01
+master 3520
+wait 60
+expect_out USB B0 22 01
+tap KNOB_BANK
+wait 30
+expect knob_bank 0
+out
+
+# faders Bank 1 (CC 64-67 on ch 1) and Bank 2 (CC 68-71 on ch 1, no jump on bank switch)
 fader 0 10
 wait 30
 out
 fader 0 50
 wait 30
-expect_out USB B0 14 32
+expect_out USB B0 40 32
+expect_out TRS B0 40 32
+out
+tap FADER_BANK
+wait 30
+expect fader_bank 1
+expect midi_out 30
+fader 0 75
+wait 30
+expect_out USB B0 44 4B
+tap FADER_BANK
+wait 30
+expect fader_bank 0
 out
 
-# wheels
+# wheels (pitch bend and mod CC 1 on key_ch)
 wheel mod 40
 wait 30
 expect_out USB B0 01 28
 wheel pitch 127
 wait 30
 expect_out USB E0 7F 7F
+wheel pitch -127
+wait 30
+expect_out USB E0 00 00
 wheel pitch 0
 wait 30
 expect_out USB E0 00 40
 shot controls.png
+out
+
+# SEQ PLAY (CC 56) and SEQ REC (CC 57): 127 on press, 0 on release
+press PLAY
+wait 20
+expect_out USB B0 38 7F
+release PLAY
+wait 20
+expect_out USB B0 38 00
+press REC
+wait 20
+expect_out USB B0 39 7F
+release REC
+wait 20
+expect_out USB B0 39 00
+out
+
+# pedal: auto-learns open rest (950), then sends CC 64 on press and release
+pedal 950
+wait 200
+expect midi_out 39
+pedal 100
+wait 30
+expect_out USB B0 40 7F
+expect_out TRS B0 40 7F
+pedal 950
+wait 30
+expect_out USB B0 40 00
+out
+
+# preset switching and page editing: PARA opens PG_EDIT, K1 selects Preset 2 (GM Drums on ch 10, notes 36..51)
+tap EDIT
+wait 30
+expect page 1
+spin K1 1
+wait 30
+expect preset 2
+expect pad_ch 10
+expect pad_map 1
+# K2 changes Preset 2's key_ch to channel 3
+spin K2 2
+wait 30
+expect key_ch 3
+tap HOME
+wait 30
+expect page 0
+out
+tappad 0 100
+wait 60
+expect_out USB 99 24 64
+expect_out USB 89 24 00
+tapbed 12 90
+wait 60
+expect_out USB 92 3C 5A
+expect_out USB 82 3C 00
+out
+
+# auto-save after 2 seconds with nothing held, and persistence across reboot
+expect dirty 1
+wait 2200
+expect dirty 0
+reboot
+wait 1200
+expect preset 2
+expect key_ch 3
+expect pad_ch 10
+# quick preset shortcut: hold HOME (PATCH) + tap Pad 0 to return to Preset 1 (key_ch 1, pad_ch 2)
+press HOME
+wait 10
+tappad 0 100
+release HOME
+wait 30
+expect preset 1
+expect key_ch 1
+expect pad_ch 2
+expect page 0
+ble connect
+wait 30
+out
+
+# queue congestion: stall BLE's 64-event ring while USB & TRS keep draining, overflow BLE with 35 key presses
+# and releases (70 events > 64), and check that the 6 dropped BLE Note-Offs retry once BLE drains again
+stall BLE on
+keybed 0 down
+keybed 1 down
+keybed 2 down
+keybed 3 down
+keybed 4 down
+keybed 5 down
+keybed 6 down
+keybed 7 down
+keybed 8 down
+keybed 9 down
+keybed 10 down
+keybed 11 down
+keybed 12 down
+keybed 13 down
+keybed 14 down
+keybed 15 down
+keybed 16 down
+keybed 17 down
+keybed 18 down
+keybed 19 down
+keybed 20 down
+keybed 21 down
+keybed 22 down
+keybed 23 down
+keybed 24 down
+keybed 25 down
+keybed 26 down
+keybed 27 down
+keybed 28 down
+keybed 29 down
+keybed 30 down
+keybed 31 down
+keybed 32 down
+keybed 33 down
+keybed 34 down
+wait 2
+keybed 0 up
+keybed 1 up
+keybed 2 up
+keybed 3 up
+keybed 4 up
+keybed 5 up
+keybed 6 up
+keybed 7 up
+keybed 8 up
+keybed 9 up
+keybed 10 up
+keybed 11 up
+keybed 12 up
+keybed 13 up
+keybed 14 up
+keybed 15 up
+keybed 16 up
+keybed 17 up
+keybed 18 up
+keybed 19 up
+keybed 20 up
+keybed 21 up
+keybed 22 up
+keybed 23 up
+keybed 24 up
+keybed 25 up
+keybed 26 up
+keybed 27 up
+keybed 28 up
+keybed 29 up
+keybed 30 up
+keybed 31 up
+keybed 32 up
+keybed 33 up
+keybed 34 up
+wait 2
+expect usb_drops 0
+expect ble_drops 7
+expect trs_drops 0
+expect pending_off 1
+expect_out USB 80 52 00
+expect_out TRS 80 52 00
+out
+stall BLE off
+wait 10
+expect pending_off 0
+expect_out BLE 80 4D 00
+expect_out BLE 80 4E 00
+expect_out BLE 80 4F 00
+expect_out BLE 80 50 00
+expect_out BLE 80 51 00
+expect_out BLE 80 52 00
 out

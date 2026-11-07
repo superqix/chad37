@@ -146,6 +146,8 @@ uint32_t plat_pads_held(void)
             out |= 1u << p;
     return out;
 }
+int plat_pad_vel(int pad) { return (uint32_t)pad < SMK_NPADS ? fm1_in.pad_vel[pad] : 0; }
+int plat_pad_press(int pad) { return (uint32_t)pad < SMK_NPADS ? fm1_in.pad_press[pad] : 0; }
 int plat_fader(int i) { return fm1_in.frames < 200u || (uint32_t)i > 3u ? -1 : (int)fm1_in.fader[i]; }
 void plat_pad_rgb(int pad, uint8_t r, uint8_t g, uint8_t b)
 {
@@ -355,7 +357,7 @@ void plat_yield(void)
  * (both from TIMER5); the jack's packets carry cable 1 (midi_uart.c), which the single-jack USB descriptor never
  * does. Bluetooth has its own queue (radio.c, main loop). */
 /* each port's messages, in and out (plat_midi_count): for the app's MIDI lights and counters */
-static uint32_t midi_n[NPORTS][2], midi_t[NPORTS][2];
+static uint32_t midi_n[NPORTS][2], midi_t[NPORTS][2], midi_drop[NPORTS];
 static void midi_counted(int port, int out, uint32_t pkt)
 {
     if ((pkt >> 8 & 0xFFu) >= 0xF8u)             /* clock, start, stop, active sensing: not counted, no light */
@@ -368,6 +370,7 @@ uint32_t plat_midi_ago(int port, int out)
 {
     return port < 0 || port >= NPORTS || !midi_t[port][!!out] ? 0xFFFFFFFFu : plat_ms() - midi_t[port][!!out];
 }
+uint32_t plat_midi_drops(int port) { return port >= 0 && port < NPORTS ? midi_drop[port] : 0; }
 int plat_midi_in(uint32_t *pkt, int *port)
 {
     int from;
@@ -387,23 +390,49 @@ int plat_midi_in(uint32_t *pkt, int *port)
     midi_counted(from, 0, *pkt);
     return 1;
 }
-void plat_midi_send(uint32_t pkt, uint32_t to)    /* the main loop's and the tick's rings are shared */
+uint32_t plat_midi_send(uint32_t pkt, uint32_t to)    /* the main loop's and the tick's rings are shared */
 {
-    uint32_t f = 0;
+#if BOARD_SMK37
+    uint32_t f = 0, ok = to & (TO_USB | TO_BLE | TO_TRS);
+#else
+    uint32_t f = 0, ok = to & (TO_USB | TO_BLE);
+#endif
     if (!in_tick)
         f = plat_lock();
     if (to & TO_USB) {
-        midi_out_event(pkt);
-        midi_counted(PORT_USB, 1, pkt);
+        int r = midi_out_event(pkt);
+        if (r > 0)
+            midi_counted(PORT_USB, 1, pkt);
+        else if (r < 0) {
+            midi_drop[PORT_USB]++;
+            ok &= ~TO_USB;
+        }
     }
     if (to & TO_BLE) {
-        ble_midi_tap(pkt);
-        midi_counted(PORT_BLE, 1, pkt);
+        int r = ble_midi_tap(pkt);
+        if (r > 0)
+            midi_counted(PORT_BLE, 1, pkt);
+        else if (r < 0) {
+            midi_drop[PORT_BLE]++;
+            ok &= ~TO_BLE;
+        }
     }
+#if BOARD_SMK37
+    if (to & TO_TRS) {
+        int r = smk_trs_midi_send(pkt);
+        if (r > 0)
+            midi_counted(PORT_TRS, 1, pkt);
+        else if (r < 0) {
+            midi_drop[PORT_TRS]++;
+            ok &= ~TO_TRS;
+        }
+    }
+#endif
     if (!in_tick)
         plat_unlock(f);
+    return ok;
 }
-void plat_midi_out(uint32_t pkt) { plat_midi_send(pkt, TO_USB); }
+void plat_midi_out(uint32_t pkt) { (void)plat_midi_send(pkt, TO_USB); }
 
 /* the keys' velocity and pressure (APP_KEY_SENSE): felucca-bsp's analog rows, as fm1-ctl and fm1-monk read them (the
  * converter's clock, a held key driven, the top row probed). Off, the converter is the main loop's (MASTER). */

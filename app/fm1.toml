@@ -1,5 +1,7 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
 # Chordpad37's build settings (fm1-base's tools/build.py: ./build.sh)
-name = "CHORDPAD"              # the build's files: chordpad-smk37.fwsc
+name = "CHORDPAD"              # the build's files: chordpad-smk37{,-elite,-mke}.fwsc
 id_prefix = "FM-1_5701"        # package identity family; only the SMK-37 builds are made
 smk_id_prefix = "5701"         # SMK-37 Pro_5701 + id_suffix (four digits keep the Elite's name within 20)
 id_suffix = "00"

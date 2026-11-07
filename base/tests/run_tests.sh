@@ -45,6 +45,7 @@ fi
 SMK_INC="-Ibsp/chip -Ibsp/boards/smk37 -Iinclude"
 run smk-flash sh -c "$CC -O2 -w -DBOARD_SMK37=1 $SMK_INC -o $OUT/smk_flash_test tests/smk_flash_test.c && $OUT/smk_flash_test"
 run smk-owner sh -c "$CC -O2 -w -DBOARD_SMK37=1 $SMK_INC -o $OUT/smk_owner_test tests/smk_owner_test.c && $OUT/smk_owner_test"
+run smk-trs-tx sh -c "$CC -O2 -w -DBOARD_SMK37=1 $SMK_INC -o $OUT/smk_trs_tx_test tests/smk_trs_tx_test.c && $OUT/smk_trs_tx_test"
 if [ -f "$PKG" ]; then
     SMKPKG=template/build/smk37/template-smk37.fwsc
     if [ ! -f "$SMKPKG" ]; then

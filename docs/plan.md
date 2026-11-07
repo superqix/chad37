@@ -58,7 +58,7 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 | USB audio | Appears and plays to the line out. Using USB and the line out into the same speakers gave a ground-loop hum. Windows keeps the first name it saw for `1209:0001` on a port (here a GemmaOne FM-1) until the device is uninstalled. |
 | K1–K8 | Panel order, CC 70–77 in the bring-up app. Right raises all eight. They are endless: the app's value moves a few steps per detent. |
 | K5 | It is MASTER: the platform reads it as the volume, and it scales USB audio playback. Whether it stays the volume or becomes a CC only (USB audio then at a fixed level) is an M3 decision. |
-| Faders, wheels | Full range. Pitch bend reaches 1, not 0 (the app's scaling). |
+| Faders, wheels | Full range. Pitch bend reached 1 at M1 (subsequently fixed in `app/app.c` to reach 0 at −127). |
 | Pedal | Not tested: no pedal. |
 | Latency | None noticeable over USB or Bluetooth, by feel. |
 | Return to stock | M-Vave's open workbench (open.m-vave.com, Elite page: Force flash ticked, then Restore factory V16, target `SMK-37 Elite_016`). Stock came back with velocity, pitch-bend rest and pads as captured in M0. |
@@ -67,45 +67,85 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 
 The first install clears stock settings in `0x9D000–0xAEFFF`, though stock rebuilds them on return. Calibration, pairing and key data are never written, and `fm1_flash_map.h` enforces this at compile time and again in the flash driver.
 
-### M2: Platform additions (`base/`)
-- **TRS MIDI out:** a new driver in `base/bsp/boards/smk37/`, because the build rejects register access anywhere else.
-  - Written fresh from the documented register setup. Don't copy GPL `smk_uart_tx.h`. The port kit's text is CC BY-NC, so write our own wording and credit it.
-  - Non-blocking queue, drained from the 100 µs scan tick. The 1 kHz tick suggested in the kit would smear a 5-note chord over 15 ms.
-  - Add `TO_TRS` to `plat_midi_send`, use `FELUCCA_LOADER` guards, and add it to the host simulator. Leave `FM1B_TRS` (the FM-1's MIDI in) off.
-- **Pad velocity and pressure:** `plat_pad_vel(p)` and `plat_pad_press(p)`. Velocity currently reaches only the white-key mapping, not the app in `SMK_PADS_OWN` mode. Pressure is already in `fm1_in.pad_press[]`.
+### M2: Platform additions (`base/`) — completed
+- **TRS MIDI out (`base/bsp/boards/smk37/fm1_trs_tx.h`):**
+  - Clean-room MPL-2.0 UART1 TX driver on `PC7` at 31,250 baud (`PLL_48M / 31250 / 4 - 1 = 383`), routed via Output Channel 1 (`IOMAP_CON3` bits `[23:20] = 1`, bit 7 cleared; `PC7` `DIR = 0, PU = 1, PD = 1, OUT = 0, DIE = 1`) so it never touches `IOMAP_CON1` used by the WS2812 pad LED driver.
+  - Non-blocking 256-byte ring (`SMK_TRS_TXQ`), kicked immediately when idle and drained from the 10 kHz (100 µs) `TIMER5` scan ISR so a 5-note chord serializes back-to-back in ~4.8 ms without smearing across 1 ms ticks.
+  - Added `TO_TRS` (`1u << PORT_TRS`) to `plat_midi_send`, guarded device TRS out with `#ifndef FELUCCA_LOADER`, wired `smk_trs_tx_pending()` into `release_notes()`, added `TO_TRS` to the host simulator, and left `FM1B_TRS` (the FM-1's MIDI in) disabled on `BOARD_SMK37`.
+- **Pad velocity and pressure:** exposed `plat_pad_vel(int pad)` (per-pad strike velocity from `fm1_in.pad_vel[]`, captured at peak scan) and `plat_pad_press(int pad)` (live aftertouch pressure `0..127` while held, `0` when up) on both the device (`plat_fm1.c`) and the host simulator (`plat_host.c`).
 
-### M3: Controller layer (`app/`)
-- **Input and output:** read `plat_keybed_hits`, `plat_keybed_vel`, pads, `plat_enc`, `plat_fader`, `plat_wheels`, `plat_pedal_raw` and buttons. Send everything to USB, Bluetooth and TRS through a single `send()`. Erik37's `app.c` is a reference for reading these inputs.
-- **Knobs and faders:** two banks on the KNOB BANK and FADER BANK buttons, with CC numbers, ranges and absolute or relative behaviour from the M0 sheet. Faders get a dead band.
-- **Buttons, wheels, pedal, octave:** send what stock sends. OCT− and OCT+ held for 5 s stays reserved for update mode.
-- **Presets:** 8 presets in one `OBJ_PRESETS` store object.
-  - The SMK-37 store allows 9 objects at 3,840 bytes each, so 8 presets need one object (about 260 bytes each, plus header).
-  - A flash write briefly stops everything, so save only after 2 seconds with nothing held.
-- **Screen:** new small UI showing preset, channels, last control and value, chord name, and settings pages.
+### M3: Controller layer (`app/`) — completed
+- **Input, output, and reference-counted note tracking (`app/note_refs.c`, `app/app.c`):**
+  - Implemented `app/note_refs.c` (with host unit tests in `tests/note_refs_test.c`) for reference-counted `(channel, note)` ownership, chord morphing, and independent per-transport (`USB`, `BLE`, `TRS`) Note-Off overflow recovery.
+  - Reads `plat_keybed_hits`, `plat_keybed_vel`, pads (`plat_pad_hits`, `plat_pads_held`, `plat_pad_vel`, `plat_pad_press`), `plat_enc`, `plat_fader`, `plat_wheels`, `plat_pedal_raw` and buttons (`plat_buttons`, `plat_smk_buttons`), sending all MIDI messages to `TO_USB | TO_BLE | TO_TRS` through a single `send()`.
+- **Knobs and faders (from `docs/stock-midi-map.md`):**
+  - Two knob banks (`KNOB BANK`): Bank 1 (`K1–K6` = CC 48–53 on ch 6 abs `0–127`, `K7` = CC 38 ch 1 rel `69`/`1`, `K8` = CC 37 ch 1 rel `69`/`1`) and Bank 2 (`K9–K16` = CC 30–37 on ch 1 rel `69`/`1`). `K5` supports both `CC+VOL` (default) and `CC ONLY` (USB audio at fixed level via `APP_GAIN`).
+  - Two fader banks (`FADER BANK`): Bank 1 (`F1–F4` = CC 64–67 ch 1) and Bank 2 (`F5–F8` = CC 68–71 ch 1), with baseline rest pickup at boot and no jump on bank switch.
+- **Pads, buttons, wheels, pedal, octave:**
+  - Pads send per-pad strike velocity and Channel Pressure (`0xD0 | pad_ch`) once pressure changes from the initial strike reading, returning to `0` before the last pad's Note-Off. Supports `STOCK` (ch 2, notes `16–19, 111–122` with full velocity), `DRUMS` (ch 10, notes `36–51`, default on Preset 2), and `V016` (Pads 1–4 velocity 0 with no release).
+  - `SEQ PLAY` sends CC 56 (`127` down / `0` up) and `SEQ REC` sends CC 57 (`127` down / `0` up) on `key_ch`.
+  - Pedal supports `AUTO` (auto-learned open/closed rest, ignoring floating middle readings), `OPEN`, `CLOSED` (CC 64), and `EXPR` (CC 11). `OCT−` and `OCT+` held 5 s remains reserved for update mode.
+- **Presets (`OBJ_PRESETS`):**
+  - 8 presets + global header stored in a single `OBJ_PRESETS` flash object (`<= 3,840` bytes), auto-saved only after 2 s since the last edit and 1.5 s of silence with nothing held or pending, plus manual save via `BT` and quick `PATCH + Pad 1–8` preset selection.
+- **Screen:** 3-strip UI (`MAIN`, `EDIT`, `GLOBAL` pages) showing active preset, bank badges, BLE status, last control/value/channel/hex packet, played note/chord name, knob/fader grids, mini 37-key and 16-pad indicators, and settings pages.
 - **Audio and MIDI in:** `app_render` outputs silence, and incoming MIDI is read and dropped.
 
-### M4: Easy Chord and chord pads
+### M4: Chord mode, Scale mode, Arpeggiator, and Global menu (completed)
 
-| | Chord mode off | Chord mode on |
+#### 1. Mode Matrix (`CHORD` = `B_ENV`, `SCALE` = `B_SEL`)
+
+| Mode State | 37-Key Keybed (`C3..C6`) | 16 RGB Pads (`P0..P15`) |
 |---|---|---|
-| Keys | Normal notes | Easy Chord: root plus modifier keys |
-| Pad, no keys held | Drums on channel 10 | Plays the stored chord; empty pads are silent |
-| Pad, keys held | Drums | Stores the held chord, without sounding it |
+| **CHORD off, SCALE off** | Normal chromatic notes | Drums / stock pad notes on channel 10 |
+| **CHORD on, SCALE off** | Normal chromatic notes + **Manual Fingered Chord detection** (recognized chord name & notes shown and latched on screen) | Plays the preset's **16 user-assigned custom chords** on the key channel (empty pads are silent) |
+| **CHORD on, SCALE on** | **Easy Chord** (`easy_chord_resolve`: root key + 2 white / 2 black modifier keys below it), transposed by the `K1` Scale Root offset; played chord shown and latched on screen | Plays the preset's **16 user-assigned custom chords** on the key channel |
+| **CHORD off, SCALE on** | **White keys play notes in key** (sequential scale degrees `1st..7th` per octave starting from the selected root on `C`); **black keys are muted** | Plays **auto-generated diatonic chords in the active key/scale** (Bottom row `P8..P15` = degrees `I..VII` + `I'` triads; Top row `P0..P7` = 7th/extended chords, shaped by `K3` Voicing and `K4` Pad Chord Flavor) |
 
-- **Mode button:** the printed CHORD button toggles chord mode.
-- **Chord logic:** `easy_chord_resolve` runs on a 128-bit held set. Unchanged from `d5d6753` except the license header and names adjusted for the unity build, since `app.c` is compiled as one unit with the platform.
-- **Note tracking:** new `app/note_refs.c`, a pure reference count per channel and note. Morphing changes only the tones that differ, and overlapping chords and pads can't cause stuck notes. Mode change, preset change, USB disconnect and panic release everything.
-- **Storing:** with several roots, the highest is stored. Each preset holds 16 chords as root and type, and overwriting replaces a pad.
-- **Output:** chord pads play on the key channel, using `plat_pad_rgb` to show stored and playing chords.
+#### 2. Pad Assignment Workflow (`SEQ REC` = `B_REC`)
+- **Latch on play:** In `CHORD` mode (`CHORD` only or `CHORD + SCALE`), playing a chord on the keys displays its detected name and notes on screen and latches it as the last played chord (so keys can either remain held or be released before assigning).
+- **Arm & assign:** Press **SEQ REC** (`B_REC`) to arm pad assignment (`SEQ REC` red LED lights and pads blink red). Tap any pad (`P0..P15`) to store the latched/held chord to that pad without sounding a drum note; **SEQ REC automatically turns off** after the assignment.
+- **Stored chord format:** Each pad stores up to **6 raw MIDI notes** plus detected `(root, type)` metadata so both arbitrary manual fingered voicings and Easy Chords (highest root wins if multiple Easy Chords are held) are preserved accurately.
+
+#### 3. Scale Mode & Knobs (`SCALE` = `B_SEL`, `PATCH` = `B_HOME`)
+- **Page & knob focus:** Pressing **SCALE** turns Scale mode on (lights `SCALE` LED) and opens the **Scale Page** on screen, assigning `K1..K4` to edit Scale parameters:
+  - **K1 (Key / Root):** `C, C#, D, D#, E, F, F#, G, G#, A, A#, B`
+  - **K2 (Scale Type):** `Major, Natural Minor, Harmonic Minor, Dorian, Phrygian, Lydian, Mixolydian, Pentatonic Major, Pentatonic Minor`
+  - **K3 (Voicing / Inversion):** `Root, 1st Inversion, 2nd Inversion, Spread`
+  - **K4 (Pad Chord Flavors):** `Triads, 7ths, 9ths`
+- **Returning to MIDI CC control:** Pressing **PATCH** (`B_HOME`) returns the screen to the Main/Controller view while keeping `SCALE` active in the background, restoring `K1..K4` to normal MIDI CC output. Pressing `SCALE` while already on the Scale page turns Scale mode off (pressing `SCALE` from another page while Scale is active focuses the Scale page first).
+
+#### 4. Arpeggiator (`ARP` = `B_ARP`)
+- **Behavior:** When `ARP` is on, holding one or more chord pads (and/or keys) arpeggiates through the active chord tones (or steps through whole chords across held pads).
+- **Clocking:** Driven by the `1 kHz` `app_tick` internal clock, with automatic sync to incoming external MIDI Clock (`0xF8`) when present.
+- **Controls:** Pressing **ARP** turns ARP on and opens the **ARP Page** (`K1 = BPM`, `K2 = Rate/Division`, `K3 = Pattern/Mode`, `K4 = Gate/Octave range`; pressing **PATCH** returns to the Main/CC page with `ARP` still active).
+- **ARP Modes:** `Up`, `Down`, `Up/Down`, `Random`, and `Full-Chord Repeat / Progression` (steps across held pads as full chords).
+
+#### 5. Global Menu (`GLOBE` = `B_GLO`)
+- Pressing **GLOBE** opens the Global Settings menu, exposing:
+  - **Strum Chords (Auto-Strum):** Staggered note-on delay (`0..120 ms` per chord tone, `Up / Down / Alt`) when triggering a chord pad or Easy Chord, queued non-blockingly via `app_tick`.
+  - **Chord Voicing:** `Root, 1st Inversion, 2nd Inversion, Spread` (shared with `K3` on the Scale page).
+  - **ARP Mode & Settings:** Pattern, Rate/Division, Gate, and Octave range.
+
+#### 6. Note Tracking, Persistence, and Pad RGB Feedback
+- **Note tracking:** New `app/note_refs.c`, a pure reference count per channel and note. Morphing changes only the tones that differ, and overlapping chords, strums, arpeggiator steps, and pads cannot cause stuck notes. Mode change, preset change, USB/BLE disconnect, UBOOT entry, and panic release everything.
+- **Persistence (`OBJ_PRESETS`):**
+  - **Per-preset:** Each of the 8 presets stores its 16 custom-assigned pad chords (up to 6 notes + root/type per pad) and controller mappings.
+  - **Global device-wide (in the store header):** Scale (`Key`, `Scale Type`, `Pad Flavor`), `Voicing`, `Auto-Strum`, and `ARP` settings persist globally across preset changes.
+- **Pad RGB LED states (`plat_pad_rgb`):**
+  - Unassigned custom pad (`CHORD` mode): Off `(0, 0, 0)`
+  - Assigned custom chord pad: Dim teal/blue
+  - Diatonic scale chord pad (`SCALE`-only mode): Amber/green (with tonic/root degrees highlighted brighter)
+  - `SEQ REC` armed: Blinking red
+  - Active / playing / arpeggiating pad: Bright white/orange
 
 ### Later, separate decisions
-Web preset editor over `APP_SYSEX`, arp, scale, note repeat, pads 17–32, Chordcade strum and voicings, USB-to-TRS thru, and a public release.
+Web preset editor over `APP_SYSEX`, note repeat, pads 17–32, manual wheel strum, USB-to-TRS thru, and a public release.
 
 ## Verification
 
 **Host tests (Mac or PC, no hardware):**
-- `tests/run_host_tests.sh`: all 940 Easy Chord vectors under ASan and UBSan, plus new `note_refs` tests.
-- `BOARD=smk37 base/tools/build.py app --host`, then scripted scenarios in `app/tests/` using `tap`, `pad`, `fader`, `expect_out`. These cover knobs and banks, chord morphing, store and recall, persistence over a simulated reboot, and no stuck notes after a mode change.
+- `tests/run_host_tests.sh`: all 940 Easy Chord vectors under ASan and UBSan, plus new `note_refs`, scale mapping, voicing/strum, and arpeggiator tests.
+- `BOARD=smk37 base/tools/build.py app --host`, then scripted scenarios in `app/tests/` using `tap`, `pad`, `fader`, `expect_out`. These cover knobs and banks, `CHORD` vs `SCALE` mode matrix, `SEQ REC` pad assignment and disarm, diatonic scale pads and white-key scale mapping, ARP patterns, auto-strum, persistence over a simulated reboot, and no stuck notes after a mode change.
 - `base/tests/run_tests.sh` still passes, including flash and installer tests.
 
 **Each firmware build (WSL):** `build.py`'s size, RAM and register checks pass.
@@ -120,7 +160,7 @@ Web preset editor over `APP_SYSEX`, arp, scale, note repeat, pads 17–32, Chord
 
 ## Risks
 
-- **Bluetooth on the SMK-37:** code runs on the FM-1 but I found no SMK-37 test, so M1 tests it first. The radio's RAM use with the rest of the app is unmeasured.
+- **Bluetooth on the SMK-37:** M1 proved pairing, reconnect, and long sessions on an SMK-37 Elite. Keep watching RAM use as the controller and chord layers are added.
 - **Bricking:** the base has boot-failure counting and the update-mode key combination. An unbrick dongle hasn't been tried on the SMK-37, so the verified backup comes before the first install.
 - **K5 and USB audio:** both depend on M1. If K5 can't be separated from MASTER, it either stays a volume knob or USB audio goes.
 - **Controls differ from the source's notes:** knob order and other details may vary by unit, so M1 checks them on yours.

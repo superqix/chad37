@@ -17,10 +17,14 @@
 #define APP_VERSION "0.1"                /* (tools/build.py --release passes its own) */
 #endif
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz */
+#define APP_GAIN(m) app_gain(m)
+uint32_t app_gain(uint32_t master);
 
-/* the store: the panel calibration (the platform's) and Bluetooth's address and pairing. The SMK-37 build puts the
- * objects in its own window by number, so the numbers stay; it holds 9 objects at most */
-enum { OBJ_SETTINGS, OBJ_PANEL, OBJ_BLE, OBJ_NOBJ };
+/* the store: 8 presets + global header in OBJ_PRESETS, the panel calibration (the platform's) and Bluetooth's
+ * address and pairing. The SMK-37 build puts the objects in its own window by number, so the numbers stay; it holds
+ * 9 objects at most */
+enum { OBJ_PRESETS, OBJ_PANEL, OBJ_BLE, OBJ_NOBJ };
+#define OBJ_SETTINGS OBJ_PRESETS
 #define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}
 
 /* the contract: the platform calls these */
@@ -34,5 +38,7 @@ void app_say(const char *a, const char *b);
 
 #ifdef PLAT_HOST
 #define APP_HOST_EXPECT                  /* the host simulator's checks (app/tests/ *.txt) */
+#define APP_HOST_REBOOT                  /* clear volatile UI state across a simulated reboot */
 int app_expect(const char *what, int *got);
+void app_host_reboot(void);
 #endif

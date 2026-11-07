@@ -376,6 +376,7 @@ static volatile uint8_t ble_state;
 /* ---- MIDI both ways (ble/midi/le_midi.c); everything here runs in the main loop */
 extern int ble_midi_send_many(const uint32_t *pkts, const uint16_t *ms, int n);
 extern int ble_midi_connected(void);
+extern int ble_midi_tx_busy(void);
 static uint32_t ble_rx_count, ble_tx_count;
 static uint8_t ble_conn;                          /* ble_midi_connected(), as of the last poll */
 #define BQ 64u
@@ -402,33 +403,34 @@ static int ble_midi_in(uint32_t *pkt)
  * use) so a stream of clock never holds up notes; the drain merges the two in time order. */
 static uint32_t ble_out_q[BQ];
 static uint16_t ble_out_ms[BQ];
-static uint32_t bo_w, bo_r;
+static volatile uint32_t bo_w, bo_r;
 #define BCQ 4u
 static uint16_t ble_clk_ms[BCQ];
 static volatile uint32_t bc_w, bc_r;
-static void ble_midi_tap(uint32_t pkt)            /* main loop (locked) or the tick; nothing queues for a central not there */
+static int ble_midi_tap(uint32_t pkt)             /* main loop (locked) or the tick: 1 queued, 0 not connected, -1 full */
 {
     uint16_t ms = (uint16_t)(fm1_ms & 0x1FFFu);
     if (ble_state != BLE_READY || !ble_conn)
-        return;
+        return 0;
     if (((pkt >> 8) & 0xFFu) == 0xF8u) {
-        if (bc_w - bc_r < BCQ) {
-            ble_clk_ms[bc_w % BCQ] = ms;
-            RING_PUBLISH();
-            bc_w++;
-        }
-        return;
-    }
-    if (bo_w - bo_r < BQ) {
-        ble_out_q[bo_w % BQ] = pkt;
-        ble_out_ms[bo_w % BQ] = ms;
+        if (bc_w - bc_r >= BCQ)
+            return -1;
+        ble_clk_ms[bc_w % BCQ] = ms;
         RING_PUBLISH();
-        bo_w++;
+        bc_w++;
+        return 1;
     }
+    if (bo_w - bo_r >= BQ)
+        return -1;
+    ble_out_q[bo_w % BQ] = pkt;
+    ble_out_ms[bo_w % BQ] = ms;
+    RING_PUBLISH();
+    bo_w++;
+    return 1;
 }
 static int ble_midi_out_pending(void)             /* MIDI still waiting for a connected central */
 {
-    return ble_conn && (bo_r != bo_w || bc_r != bc_w);
+    return ble_conn && (bo_r != bo_w || bc_r != bc_w || ble_midi_tx_busy());
 }
 static int ms_before(uint16_t a, uint16_t b) { return ((uint32_t)(b - a) & 0x1FFFu) < 4096u && a != b; }
 static void ble_midi_drain(void)                  /* main loop: what waits, as many notifications as the stack takes */

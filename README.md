@@ -18,22 +18,22 @@ is in `app/` and tested on a computer, but isn't connected to the keys or pads y
 
 ## Building
 
-Tests, on a Mac or Linux with a C compiler and Python 3 with Pillow:
+Tests, on a Mac or Linux with a C compiler and Python 3:
 
 ```bash
 sh app/tests/run_tests.sh
 ```
 
-Firmware, on Linux or WSL with JieLi's toolchain (`base/tools/get_toolchain.sh`) and the AC79 SDK:
+Firmware, on Linux or WSL with JieLi's toolchain (`base/tools/get_toolchain.sh`), the AC79 SDK, and Python 3 with Pillow and NumPy:
 
 ```bash
 ./build.sh
 ```
 
-Each model has its own package in `build/chordpad37/`. Install with:
+Each model has its own package in `build/chordpad37/` (`chordpad-smk37.fwsc` for SMK-37 Pro, `chordpad-smk37-elite.fwsc` for SMK-37 Elite, `chordpad-smk37-mke.fwsc` for MKE-P37). Install the package matching your model with:
 
 ```bash
-python3 base/tools/fm1_install.py build/chordpad37/chordpad-smk37.fwsc
+python3 base/tools/fm1_install.py build/chordpad37/chordpad-smk37-elite.fwsc
 ```
 
 ## Licence

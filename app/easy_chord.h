@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 Michael Wilson */
 #ifndef EASY_CHORD_H
 #define EASY_CHORD_H
 #include <stdint.h>

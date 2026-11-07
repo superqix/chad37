@@ -209,6 +209,28 @@ int ble_midi_connected(void) { return periph_ready() || mc_ready(); }
 int ble_midi_peripheral_connected(void) { return periph_ready(); }
 int ble_midi_peripheral_linked(void) { return con_handle != 0; }   /* listening or not yet */
 static u16 send_mtu = 20;                        /* ATT payload: 23 - 3 until the exchange says more */
+static u32 att_remain_max;
+static u32 att_remain_now(void)
+{
+    u32 remain = 0;
+#if BLE_MIDI_CENTRAL
+    u32 r1 = 0xFFFFFFFFu, r2 = 0xFFFFFFFFu;
+    if (periph_ready())
+        ble_op_multi_att_get_remain(con_handle, &r1);
+    if (mc_ready())
+        ble_op_multi_att_get_remain(mc_handle, &r2);
+    remain = r1 < r2 ? r1 : r2;
+#else
+    ble_op_att_get_remain(&remain);
+#endif
+    if (remain > att_remain_max)
+        att_remain_max = remain;
+    return remain;
+}
+int ble_midi_tx_busy(void)
+{
+    return ble_midi_connected() && att_remain_now() < att_remain_max;
+}
 int ble_midi_send_many(const uint32_t *pkts, const uint16_t *ms, int n)
 {
     /* each message carries the millisecond it happened (ms[], 13 bits): a receiver that honours the
@@ -218,27 +240,13 @@ int ble_midi_send_many(const uint32_t *pkts, const uint16_t *ms, int n)
     u8 buf[64], run = 0;
     u32 len = 0, remain = 0, t0, tp;
     int i;
-    static u32 remain_max;
     if (!ble_midi_connected() || n <= 0)
         return 0;
     /* one notification in the stack at a time: the radio sends about one a connection interval, so
      * what piles up meanwhile goes together in the next one (with its own timestamps) instead of as a
      * queue of small ones that each wait for a slot */
-#if BLE_MIDI_CENTRAL
-    {   /* both links take it or neither (each has its own buffer in the multi-link stack) */
-        u32 r1 = 0xFFFFFFFFu, r2 = 0xFFFFFFFFu;
-        if (periph_ready())
-            ble_op_multi_att_get_remain(con_handle, &r1);
-        if (mc_ready())
-            ble_op_multi_att_get_remain(mc_handle, &r2);
-        remain = r1 < r2 ? r1 : r2;
-    }
-#else
-    ble_op_att_get_remain(&remain);
-#endif
-    if (remain > remain_max)
-        remain_max = remain;
-    if (remain < remain_max || remain < 8u)
+    remain = att_remain_now();
+    if (remain < att_remain_max || remain < 8u)
         return 0;
     t0 = tp = ms[0] & 0x1FFFu;
     buf[len++] = (u8)(0x80 | ((t0 >> 7) & 0x3F));
