@@ -123,7 +123,7 @@ typedef struct {
     uint8_t arp_mode;                    /* ARP_* (0..4) */
     uint8_t arp_gate;                    /* 10..95 % */
     uint8_t arp_oct;                     /* 1..3 octaves */
-    uint8_t rsv1;
+    uint8_t pad_vel_min;                 /* 1..100: pad velocities scaled into pad_vel_min..127 (0, older stores: 1) */
     preset_t presets[NPRESETS];
 } presets_store_t;
 
@@ -274,6 +274,7 @@ static void store_defaults(void)
     st.arp_mode = ARP_UP;
     st.arp_gate = 75;
     st.arp_oct = 1;
+    st.pad_vel_min = 1;
     for (i = 0; i < NPRESETS; i++)
         preset_init_default(&st.presets[i], i);
 }
@@ -286,7 +287,7 @@ static int store_valid(const presets_store_t *s)
         s->vel_curve >= NCURVES || s->theme >= NPALETTES || s->scale_root >= 12 || s->scale_type >= NSCALES ||
         s->voicing >= NVOICINGS || s->pad_flavor >= NFLAVORS || s->strum_ms > 120 || s->strum_dir >= NSTRUM_DIRS ||
         s->arp_bpm < 40 || s->arp_bpm > 240 || s->arp_div >= NARP_DIVS || s->arp_mode >= NARP_MODES ||
-        s->arp_gate < 10 || s->arp_gate > 95 || s->arp_oct < 1 || s->arp_oct > 3)
+        s->arp_gate < 10 || s->arp_gate > 95 || s->arp_oct < 1 || s->arp_oct > 3 || s->pad_vel_min > 100)
         return 0;
     for (i = 0; i < NPRESETS; i++) {
         const preset_t *p = &s->presets[i];
@@ -343,6 +344,12 @@ static uint32_t apply_curve(int raw_vel)
     else if (st.vel_curve == CURVE_FIXED)
         v = 100;
     return (uint32_t)clamp(v, 1, 127);
+}
+
+static uint32_t pad_floor(uint32_t vel)          /* 1..127 -> PAD MIN..127, the dynamics kept */
+{
+    uint32_t lo = st.pad_vel_min > 1u ? st.pad_vel_min : 1u;
+    return lo + ((vel - 1u) * (127u - lo) + 63u) / 126u;
 }
 
 /* --------------------------------------------------------------- platform --- */
@@ -636,7 +643,7 @@ static void pads_input(void)
             ui.redraw = 1;
         }
         if (hits & b) {
-            uint8_t vel = (uint8_t)apply_curve(plat_pad_vel((int)p));
+            uint8_t vel = (uint8_t)pad_floor(apply_curve(plat_pad_vel((int)p)));
             ui.last_pad_vel = vel;
             ui.pad_press_base[p] = (uint8_t)clamp(plat_pad_press((int)p), 0, 127);
 
@@ -930,6 +937,13 @@ static void page_knob_turn(int idx, int32_t e)
                 mark_dirty();
             }
             app_say("THEME", PALETTES[st.theme].name);
+        } else if (idx == 5) {
+            int32_t m = clamp((int32_t)(st.pad_vel_min > 1u ? st.pad_vel_min : 1u) + e, 1, 100);
+            if (m != st.pad_vel_min) {
+                st.pad_vel_min = (uint8_t)m;
+                mark_dirty();
+            }
+            say_control("PAD MIN", m);
         }
     }
 }
@@ -975,7 +989,7 @@ static void knobs_input(void)
             e = plat_enc(KNOB_ROLE[i]);
             if (!e)
                 continue;
-            if (ui.page != PG_MAIN && i < 4) {
+            if (ui.page != PG_MAIN && (i < 4 || (ui.page == PG_HW && i == 5))) {   /* HW: K6 is PAD MIN */
                 page_knob_turn(i, e);
                 continue;
             }
@@ -1565,7 +1579,13 @@ static void draw_hw_body(void)
     value_cell(120, 72, "ACTV", (int32_t)note_refs_active(&ui.nr), 0);
     value_cell(178, 72, "PEND", note_refs_pending(&ui.nr), 0);
 
-    cv_text(4, 102, &FONT_XS, "SEQ PLAY: CC 56   SEQ REC: CC 57 / PAD ARM", C_GRAY);
+    {
+        char t[32] = "K6 PAD MIN VEL: ";
+        int_text(st.pad_vel_min > 1u ? st.pad_vel_min : 1, t + 16);
+        if (st.pad_vel_min <= 1u)
+            copy_str(t + 16, sizeof t - 16, "OFF");
+        cv_text(4, 102, &FONT_XS, t, C_GRAY);
+    }
     cv_text(4, 126, &FONT_T, "PATCH: MAIN VIEW   FX: ALL NOTES OFF", C_AMB);
     cv_blit(0, 36);
 }
@@ -1696,6 +1716,8 @@ int app_expect(const char *what, int *got)
         *got = st.pedal_mode;
     else if (!strcmp(what, "k5_mode"))
         *got = st.k5_mode;
+    else if (!strcmp(what, "pad_vel_min"))
+        *got = st.pad_vel_min;
     else if (!strcmp(what, "page"))
         *got = ui.page;
     else if (!strcmp(what, "dirty"))

@@ -132,7 +132,7 @@ static volatile struct {
     int16_t enc_cnt[FM1_NENC];   /* transitions, + = B leads */
     int16_t enc_steps[FM1_NENC];
     uint16_t pad_raw[SMK_NPAD], pad_base[SMK_NPAD], pad_peak[SMK_NPAD];
-    uint8_t pad_st[SMK_NPAD];    /* 0 idle, 1..SMK_PAD_PEAKN collecting the peak, 0x80 on */
+    uint8_t pad_st[SMK_NPAD];    /* 0 idle, 1..SMK_PAD_PEAKMAX collecting the peak, 0x80 on */
     uint8_t pad_low[SMK_NPAD];
     uint8_t pad_vel[SMK_NPAD];   /* MIDI velocity 1..127 of each pad's last strike */
     uint8_t pad_press[SMK_NPAD]; /* pressure 0..127 while on */
@@ -432,7 +432,9 @@ static void fm1__frame(void)
 /* ---------------------------------------------------------------- analog --- */
 #define SMK_PAD_ON 24u            /* above the baseline: a hit starts */
 #define SMK_PAD_OFF 12u           /* below base + this: released */
-#define SMK_PAD_PEAKN 3u          /* samples (2.4 ms apart) for the peak */
+#define SMK_PAD_PEAKN 3u          /* samples (2.4 ms apart) for the peak, at least */
+#define SMK_PAD_PEAKMAX 6u        /* and at most, while the reading still rises: a light or quick hit is slower, and
+                                   * read after 3 it came out at the curve's floor (velocity 1) */
 
 static void smk__padq(uint32_t pad, uint32_t vel)     /* a pad hit (vel) or release (0): its white key */
 {
@@ -476,10 +478,11 @@ static void smk__pad(uint32_t p, uint32_t raw)
         }
         return;
     }
-    if (st < 0x80u) {                                       /* the peak of the first samples */
-        if (raw > fm1_in.pad_peak[p])
+    if (st < 0x80u) {                                       /* the peak of the first samples, longer while rising */
+        uint32_t rising = raw > fm1_in.pad_peak[p];
+        if (rising)
             fm1_in.pad_peak[p] = (uint16_t)raw;
-        if (++st < SMK_PAD_PEAKN) {
+        if (++st < SMK_PAD_PEAKN || (rising && st < SMK_PAD_PEAKMAX)) {
             fm1_in.pad_st[p] = (uint8_t)st;
             return;
         }

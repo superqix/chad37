@@ -85,6 +85,36 @@ expect_out USB 81 6F 00
 expect_out TRS 81 6F 00
 out
 
+# PAD MIN (GLOBE twice: the hardware page, K6): pad velocities scaled into 40..127, the dynamics kept
+tap GLO
+wait 30
+tap GLO
+wait 30
+expect page 5
+spin SELECT 39
+wait 30
+expect pad_vel_min 40
+tappad 4 1
+wait 60
+expect_out USB 91 6F 28
+expect_out USB 81 6F 00
+out
+tappad 4 64
+wait 60
+expect_out USB 91 6F 54
+out
+tappad 4 127
+wait 60
+expect_out USB 91 6F 7F
+out
+spin SELECT -39
+wait 30
+expect pad_vel_min 1
+tap HOME
+wait 30
+expect page 0
+out
+
 # knobs Bank 1: K1-K6 are CC 48-53 on ch 6 (0xB5, abs 0..127); K7-K8 are CC 38/37 on ch 1 (0xB0, rel 1 / 69)
 spin K1 3
 wait 30
@@ -140,7 +170,7 @@ out
 tap FADER_BANK
 wait 30
 expect fader_bank 1
-expect midi_out 30
+expect midi_out 36
 fader 0 75
 wait 30
 expect_out USB B0 44 4B
@@ -183,7 +213,7 @@ out
 # pedal: auto-learns open rest (950), then sends CC 64 on press and release
 pedal 950
 wait 200
-expect midi_out 39
+expect midi_out 45
 pedal 100
 wait 30
 expect_out USB B0 40 7F
