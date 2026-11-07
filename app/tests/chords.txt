@@ -172,6 +172,40 @@ expect rec_arm 0
 expect pad_chord1 3
 out
 
+# K3 VOICING to 2X (4): every chord plays with the same chord an octave below. The pad keeps the D triad unvoiced
+# (3 notes) and plays D3 F#3 A3 (0x32 0x36 0x39) with D4 F#4 A4
+spin K3 4
+wait 30
+expect voicing 4
+tappad 1 100
+wait 60
+expect pad_chord1 3
+expect_out USB 90 32 64
+expect_out USB 90 36 64
+expect_out USB 90 39 64
+expect_out USB 90 3E 64
+expect_out USB 90 42 64
+expect_out USB 90 45 64
+expect active_notes 0
+out
+# Easy Chord on the keys: D Maj7 doubled is 8 notes; the latched chord (what SEQ REC would store) stays 4
+keybed 12 down
+keybed 11 down
+wait 30
+expect latched_count 4
+expect active_notes 8
+expect_out USB 90 32 64
+expect_out USB 90 3D 64
+expect_out USB 90 49 64
+keybed 12 up
+keybed 11 up
+wait 30
+expect active_notes 0
+spin K3 -4
+wait 30
+expect voicing 0
+out
+
 # PATCH (HOME) returns to PG_MAIN while keeping SCALE active
 tap HOME
 wait 30

@@ -109,7 +109,7 @@ typedef struct {
     uint8_t fader_min[NBANK_FADERS];
     uint8_t fader_max[NBANK_FADERS];
     uint8_t pad_note[SMK_NPADS];
-    cs_chord_t chords[SMK_NPADS];        /* 16 user-assigned custom chords per preset */
+    cs_pad_chord_t chords[SMK_NPADS];    /* 16 user-assigned custom chords per preset (unvoiced) */
 } preset_t;
 
 typedef struct {
@@ -125,7 +125,7 @@ typedef struct {
     /* Global device-wide musical settings (persist across preset changes) */
     uint8_t scale_root;                  /* 0..11 (C..B) */
     uint8_t scale_type;                  /* SCALE_* (0..8) */
-    uint8_t voicing;                     /* VOICING_* (0..3) */
+    uint8_t voicing;                     /* VOICING_* (0..4) */
     uint8_t pad_flavor;                  /* FLAVOR_* (0..2, default FLAVOR_7THS) */
     uint8_t strum_ms;                    /* 0..120 ms per chord tone */
     uint8_t strum_dir;                   /* STRUM_* (0..2) */
@@ -154,7 +154,7 @@ static struct {
     uint32_t latched_pad;                /* the pad LATCH holds (bit p), kept in pads_on after it is let go */
     uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
     uint8_t rec_arm;                     /* SEQ REC armed for pad chord assignment */
-    cs_chord_t latched_chord;            /* last played/detected chord on keys (for SEQ REC pad store) */
+    cs_chord_t latched_chord;            /* last played/detected chord, unvoiced (SEQ REC stores it on a pad) */
     cs_chord_t key_ec_prev;              /* previous Easy Chord held on keys */
     uint64_t keys_on;                    /* keybed keys physically held */
     uint8_t key_note[SMK_NKEYBED];       /* MIDI note each held key started on (0xFF if muted black key) */
@@ -316,7 +316,7 @@ static int store_valid(const presets_store_t *s)
                 p->fader_min[k] > p->fader_max[k] || p->fader_max[k] > 127)
                 return 0;
         for (k = 0; k < SMK_NPADS; k++)
-            if (p->pad_note[k] > 127 || p->chords[k].count > CS_MAX_NOTES)
+            if (p->pad_note[k] > 127 || p->chords[k].count > CS_CHORD_NOTES)
                 return 0;
     }
     return 1;
@@ -539,8 +539,9 @@ static void keys_input(void)
             return;
         ui.keys_on = now;
         build_raw_key_mask(now, raw_held);
-        if (cs_resolve_easy_chord(raw_held, st.scale_root, st.voicing, &ec, cname)) {
-            ui.latched_chord = ec;
+        if (cs_resolve_easy_chord(raw_held, st.scale_root, VOICING_ROOT, &ec, cname)) {
+            ui.latched_chord = ec;                                   /* unvoiced; played with the voicing */
+            ec.count = cs_apply_voicing(ec.notes, ec.count, st.voicing);
             copy_str(ui.chord_name, sizeof ui.chord_name, cname);
             copy_str(ui.last_ctrl, sizeof ui.last_ctrl, cname);
             ui.last_val = ui.last_key_vel;
@@ -675,8 +676,8 @@ static void pads_input(void)
             if (hits >> p & 1u) {
                 if (ui.latched_chord.count > 0) {
                     char cname[16], pnum[12];
-                    pr->chords[p] = ui.latched_chord;
-                    cs_chord_format_name(&pr->chords[p], cname);
+                    cs_pad_chord_store(&pr->chords[p], &ui.latched_chord);
+                    cs_chord_format_name(&ui.latched_chord, cname);
                     copy_str(ui.chord_name, sizeof ui.chord_name, cname);
                     copy_str(pnum, sizeof pnum, "PAD ");
                     int_text((int32_t)p + 1, pnum + 4);
@@ -718,18 +719,18 @@ static void pads_input(void)
                 char cname[16];
                 uint8_t ch = pr->key_ch & 15u;
                 if (ui.chord_on) {       /* Custom user-assigned chord pads (CHORD only, or CHORD + SCALE) */
-                    c_play = pr->chords[p];
+                    cs_pad_chord_load(&c_play, &pr->chords[p]);
                     if (c_play.count == 0) {
                         say_control("EMPTY PAD", (int32_t)p + 1);
                         continue;
                     }
                     cs_chord_format_name(&c_play, cname);
-                    cs_apply_voicing(c_play.notes, c_play.count, st.voicing);
                 } else {                 /* Diatonic scale chord pads (SCALE-only mode) */
                     cs_scale_pad_chord(p, st.octave, st.scale_root, st.scale_type,
-                                       st.voicing, st.pad_flavor, &c_play, cname);
-                    ui.latched_chord = c_play;
+                                       VOICING_ROOT, st.pad_flavor, &c_play, cname);
+                    ui.latched_chord = c_play;                       /* unvoiced, as SEQ REC stores it */
                 }
+                c_play.count = cs_apply_voicing(c_play.notes, c_play.count, st.voicing);
                 copy_str(ui.chord_name, sizeof ui.chord_name, cname);
                 copy_str(ui.last_ctrl, sizeof ui.last_ctrl, cname);
                 ui.last_val = (int32_t)vel;
@@ -819,6 +820,7 @@ static void arp_service(uint32_t now_ms)
     if (ui.keys_on && n_chords < CS_ARP_MAX_CHORDS) {
         if (ui.chord_on && ui.scale_on && ui.latched_chord.count > 0) {
             chords[n_chords] = ui.latched_chord;
+            chords[n_chords].count = cs_apply_voicing(chords[n_chords].notes, chords[n_chords].count, st.voicing);
             pad_idx[n_chords] = 0xFF;
             n_chords++;
         } else {

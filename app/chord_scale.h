@@ -8,8 +8,9 @@
 #include "easy_chord.h"
 #include "note_refs.h"
 
-#define CS_MAX_NOTES 6u
-#define CS_NPADS     16u
+#define CS_CHORD_NOTES 6u                /* a chord's own tones: what detection finds and a pad stores */
+#define CS_MAX_NOTES   12u               /* a voiced chord as played: VOICING_DOUBLE adds an octave below */
+#define CS_NPADS       16u
 
 enum {
     SCALE_MAJOR,
@@ -29,6 +30,7 @@ enum {
     VOICING_INV1,
     VOICING_INV2,
     VOICING_SPREAD,
+    VOICING_DOUBLE,                      /* "2X": the chord, and the same chord an octave below */
     NVOICINGS
 };
 
@@ -64,11 +66,23 @@ enum {
 };
 
 typedef struct {
-    uint8_t count;                       /* 0 = unassigned, 1..6 = notes[] count */
+    uint8_t count;                       /* 0 = unassigned, 1..CS_MAX_NOTES = notes[] count */
     uint8_t root;                        /* MIDI root note or pitch class */
     uint8_t type;                        /* easy_chord_type, or 0xFE custom, 0xFF single note */
     uint8_t notes[CS_MAX_NOTES];
 } cs_chord_t;
+
+/* A chord as a pad stores it (presets): unvoiced, at most CS_CHORD_NOTES tones. Its layout is the store's */
+typedef struct {
+    uint8_t count;                       /* 0 = unassigned, 1..CS_CHORD_NOTES */
+    uint8_t root;
+    uint8_t type;
+    uint8_t notes[CS_CHORD_NOTES];
+} cs_pad_chord_t;
+_Static_assert(sizeof(cs_pad_chord_t) == 9u, "the preset store's pad chord layout");
+
+void cs_pad_chord_store(cs_pad_chord_t *dst, const cs_chord_t *src);   /* the first CS_CHORD_NOTES tones */
+void cs_pad_chord_load(cs_chord_t *dst, const cs_pad_chord_t *src);
 
 /* Names for UI display */
 extern const char *const CS_ROOT_NAMES[12];
@@ -90,8 +104,9 @@ uint8_t cs_detect_manual_chord(const uint8_t held[16], cs_chord_t *out, char nam
 /* Format the display name of any cs_chord_t into name[16]. */
 void cs_chord_format_name(const cs_chord_t *ch, char name[16]);
 
-/* Apply voicing/inversion (VOICING_*) in-place to tones[0..count-1] and sort ascending. */
-void cs_apply_voicing(uint8_t *tones, uint8_t count, uint8_t voicing);
+/* Apply voicing/inversion (VOICING_*) in-place to tones[0..count-1] and sort ascending; tones holds CS_MAX_NOTES.
+ * Returns the new count (VOICING_DOUBLE adds each tone an octave below, skipping any below 0 or already there). */
+uint8_t cs_apply_voicing(uint8_t *tones, uint8_t count, uint8_t voicing);
 
 /* Resolve Easy Chord from raw held keybed notes (128-bit mask), transpose by scale_root (0..11),
  * and apply voicing (VOICING_*). Fills *out and writes chord name to name[16]. Returns 1 if a chord is held. */
@@ -110,7 +125,7 @@ void cs_scale_pad_chord(uint32_t pad, int8_t octave, uint8_t scale_root, uint8_t
 /* ----------------------------------------------------------- Auto-Strum --- */
 #define CS_STRUM_SRC_KEYS 16u
 #define CS_STRUM_NSRC     17u            /* 0..15 = pads P0..P15, 16 = keybed chord */
-#define CS_STRUM_QMAX     32u
+#define CS_STRUM_QMAX     64u            /* room for doubled (2X) chords on several sources */
 
 typedef struct {
     uint8_t active;

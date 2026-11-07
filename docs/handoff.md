@@ -52,6 +52,7 @@ Chordpad37 became Chad37: a nod to Erik37, and short for CHord pAD. The boot scr
 | Knobs | All 16 absolute 0–127: K1–K8 CC 48–55 ch 6, K9–K16 CC 102–109 ch 1 (stock's relative K7–K16 acted as switches in Surge XT); saved presets migrated |
 | CHORD mode, chord pads, LATCH | Work in Surge XT; latched chords end cleanly |
 | `<` `>` arrows | Program Change; the FM-1 follows, Surge XT ignores Program Change |
+| 2X voicing | K3 VOICE after SPREAD: chords play with the same chord an octave below (pads store chords unvoiced, so a voicing is no longer applied twice) |
 
 ### Not yet tested on the keyboard
 

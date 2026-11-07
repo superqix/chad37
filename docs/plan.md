@@ -105,7 +105,7 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
 #### 2. Pad Assignment Workflow (`SEQ REC` = `B_REC`)
 - **Latch on play:** In `CHORD` mode (`CHORD` only or `CHORD + SCALE`), playing a chord on the keys displays its detected name and notes on screen and latches it as the last played chord (so keys can either remain held or be released before assigning).
 - **Arm & assign:** Press **SEQ REC** (`B_REC`) to arm pad assignment (`SEQ REC` red LED lights and pads blink red). Tap any pad (`P0..P15`) to store the latched/held chord to that pad without sounding a drum note; **SEQ REC automatically turns off** after the assignment.
-- **Stored chord format:** Each pad stores up to **6 raw MIDI notes** plus detected `(root, type)` metadata so both arbitrary manual fingered voicings and Easy Chords (highest root wins if multiple Easy Chords are held) are preserved accurately.
+- **Stored chord format:** Each pad stores up to **6 raw MIDI notes** plus detected `(root, type)` metadata so both arbitrary manual fingered voicings and Easy Chords (highest root wins if multiple Easy Chords are held) are preserved accurately. Pads store the chord unvoiced (since 2X); the current voicing applies whenever it plays, so it is not applied twice.
 
 - **Latch (`NOTE REPEAT` = `B_LFO`):** while the pads play chords (`CHORD` on, or `SCALE` alone), `NOTE REPEAT` toggles LATCH (its light, and `LAT` in the header). A tapped chord pad keeps sounding after it is let go; another pad switches to its chord (an empty pad just stops it); the latched pad again stops it; LATCH off, a mode or preset change, or `FX` panic lets it go. With `ARP` on, the arpeggiator keeps running on the latched chord.
 
@@ -113,7 +113,7 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
 - **Page & knob focus:** Pressing **SCALE** turns Scale mode on (lights `SCALE` LED) and opens the **Scale Page** on screen, assigning `K1..K4` to edit Scale parameters:
   - **K1 (Key / Root):** `C, C#, D, D#, E, F, F#, G, G#, A, A#, B`
   - **K2 (Scale Type):** `Major, Natural Minor, Harmonic Minor, Dorian, Phrygian, Lydian, Mixolydian, Pentatonic Major, Pentatonic Minor`
-  - **K3 (Voicing / Inversion):** `Root, 1st Inversion, 2nd Inversion, Spread`
+  - **K3 (Voicing / Inversion):** `Root, 1st Inversion, 2nd Inversion, Spread, 2X` (2X: the chord plus the same chord an octave below, up to 12 notes)
   - **K4 (Pad Chord Flavors):** `Triads, 7ths, 9ths`
 - **Returning to MIDI CC control:** Pressing **PATCH** (`B_HOME`) returns the screen to the Main/Controller view while keeping `SCALE` active in the background, restoring `K1..K4` to normal MIDI CC output. Pressing `SCALE` while already on the Scale page turns Scale mode off (pressing `SCALE` from another page while Scale is active focuses the Scale page first).
 
@@ -126,7 +126,7 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
 #### 5. Global Menu (`GLOBE` = `B_GLO`)
 - Pressing **GLOBE** opens the Global Settings menu, exposing:
   - **Strum Chords (Auto-Strum):** Staggered note-on delay (`0..120 ms` per chord tone, `Up / Down / Alt`) when triggering a chord pad or Easy Chord, queued non-blockingly via `app_tick`.
-  - **Chord Voicing:** `Root, 1st Inversion, 2nd Inversion, Spread` (shared with `K3` on the Scale page).
+  - **Chord Voicing:** `Root, 1st Inversion, 2nd Inversion, Spread, 2X` (shared with `K3` on the Scale page).
   - **ARP Mode & Settings:** Pattern, Rate/Division, Gate, and Octave range.
 
 #### 6. Note Tracking, Persistence, and Pad RGB Feedback

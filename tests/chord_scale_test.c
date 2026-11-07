@@ -60,6 +60,42 @@ static void test_manual_chord_and_voicing(void)
         assert(ts[0] == 60 && ts[1] == 67 && ts[2] == 76);
     }
 
+    /* 2X (VOICING_DOUBLE): the chord and the same chord an octave below, sorted; tones below 0 or already sounding
+     * are skipped, and a 9th chord (5 tones) doubles to 10 */
+    {
+        uint8_t d[CS_MAX_NOTES] = {60, 64, 67};
+        uint8_t n9[CS_MAX_NOTES] = {60, 64, 67, 70, 74};
+        uint8_t lo[CS_MAX_NOTES] = {5, 9, 12};
+        uint8_t sp[CS_MAX_NOTES] = {60, 67, 72};
+        uint8_t one[CS_MAX_NOTES] = {60};
+        uint8_t n = cs_apply_voicing(d, 3, VOICING_DOUBLE);
+        assert(n == 6 && d[0] == 48 && d[1] == 52 && d[2] == 55 && d[3] == 60 && d[4] == 64 && d[5] == 67);
+        n = cs_apply_voicing(n9, 5, VOICING_DOUBLE);
+        assert(n == 10 && n9[0] == 48 && n9[4] == 60 && n9[5] == 62 && n9[9] == 74);
+        n = cs_apply_voicing(lo, 3, VOICING_DOUBLE);
+        assert(n == 4 && lo[0] == 0 && lo[1] == 5 && lo[2] == 9 && lo[3] == 12);
+        n = cs_apply_voicing(sp, 3, VOICING_DOUBLE);          /* 72 - 12 = 60 is already there */
+        assert(n == 5 && sp[0] == 48 && sp[1] == 55 && sp[2] == 60 && sp[3] == 67 && sp[4] == 72);
+        n = cs_apply_voicing(one, 1, VOICING_DOUBLE);
+        assert(n == 2 && one[0] == 48 && one[1] == 60);
+    }
+
+    /* a pad stores a chord unvoiced and at most CS_CHORD_NOTES tones; loading gives it back */
+    {
+        cs_chord_t big = {0}, back;
+        cs_pad_chord_t pc;
+        uint8_t i;
+        big.count = 8;
+        big.root = 50;
+        big.type = 3;
+        for (i = 0; i < 8; i++)
+            big.notes[i] = (uint8_t)(50 + i);
+        cs_pad_chord_store(&pc, &big);
+        assert(pc.count == CS_CHORD_NOTES && pc.root == 50 && pc.type == 3 && pc.notes[5] == 55);
+        cs_pad_chord_load(&back, &pc);
+        assert(back.count == CS_CHORD_NOTES && back.notes[0] == 50 && back.notes[5] == 55 && back.notes[6] == 0);
+    }
+
     /* Easy Chord with Scale Root offset (+2 = D) and 1st Inversion:
      * Holding C4 (60) + B3 (59, W1 below C4 -> Maj7) transposed by +2 -> D Maj7 (62, 66, 69, 73),
      * 1st Inv -> (66, 69, 73, 74). */

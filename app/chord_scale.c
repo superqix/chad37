@@ -6,7 +6,7 @@ const char *const CS_ROOT_NAMES[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G"
 const char *const CS_SCALE_NAMES[NSCALES] = {
     "MAJOR", "NAT MIN", "HARM MIN", "DORIAN", "PHRYGIAN", "LYDIAN", "MIXOLYDN", "PENT MAJ", "PENT MIN"
 };
-const char *const CS_VOICING_NAMES[NVOICINGS] = {"ROOT", "1ST INV", "2ND INV", "SPREAD"};
+const char *const CS_VOICING_NAMES[NVOICINGS] = {"ROOT", "1ST INV", "2ND INV", "SPREAD", "2X"};
 const char *const CS_FLAVOR_NAMES[NFLAVORS] = {"TRIADS", "7THS", "9THS"};
 const char *const CS_STRUM_DIR_NAMES[NSTRUM_DIRS] = {"UP", "DOWN", "ALT"};
 const char *const CS_ARP_MODE_NAMES[NARP_MODES] = {"UP", "DOWN", "UP/DN", "RANDOM", "CHORD"};
@@ -211,20 +211,54 @@ uint8_t cs_detect_manual_chord(const uint8_t held[16], cs_chord_t *out, char nam
     *out = (cs_chord_t){0};
     for (note = 0; note < 128; note++) {
         if (held[note >> 3] & (1u << (note & 7))) {
-            if (n < CS_MAX_NOTES)
+            if (n < CS_CHORD_NOTES)
                 out->notes[n] = (uint8_t)note;
             n++;
         }
     }
-    out->count = n > CS_MAX_NOTES ? CS_MAX_NOTES : n;
+    out->count = n > CS_CHORD_NOTES ? CS_CHORD_NOTES : n;
     identify_notes(out, name);
     return n;
 }
 
-void cs_apply_voicing(uint8_t *tones, uint8_t count, uint8_t voicing)
+static int note_in_list(uint8_t note, const uint8_t *list, uint8_t count);
+
+void cs_pad_chord_store(cs_pad_chord_t *dst, const cs_chord_t *src)
 {
+    uint8_t i, n = src->count > CS_CHORD_NOTES ? CS_CHORD_NOTES : src->count;
+    *dst = (cs_pad_chord_t){0};
+    dst->count = n;
+    dst->root = src->root;
+    dst->type = src->type;
+    for (i = 0; i < n; i++)
+        dst->notes[i] = src->notes[i];
+}
+
+void cs_pad_chord_load(cs_chord_t *dst, const cs_pad_chord_t *src)
+{
+    uint8_t i, n = src->count > CS_CHORD_NOTES ? CS_CHORD_NOTES : src->count;
+    *dst = (cs_chord_t){0};
+    dst->count = n;
+    dst->root = src->root;
+    dst->type = src->type;
+    for (i = 0; i < n; i++)
+        dst->notes[i] = src->notes[i];
+}
+
+uint8_t cs_apply_voicing(uint8_t *tones, uint8_t count, uint8_t voicing)
+{
+    if (count > CS_MAX_NOTES)
+        count = CS_MAX_NOTES;
+    if (voicing == VOICING_DOUBLE) {     /* each tone again an octave below; a single note doubles too */
+        uint8_t n = count, i;
+        for (i = 0; i < count && n < CS_MAX_NOTES; i++)
+            if (tones[i] >= 12u && !note_in_list((uint8_t)(tones[i] - 12u), tones, n))
+                tones[n++] = (uint8_t)(tones[i] - 12u);
+        sort_notes(tones, n);
+        return n;
+    }
     if (count < 2 || voicing == VOICING_ROOT)
-        return;
+        return count;
     sort_notes(tones, count);
     if (voicing == VOICING_INV1) {
         if (tones[0] + 12u <= 127u)
@@ -239,6 +273,7 @@ void cs_apply_voicing(uint8_t *tones, uint8_t count, uint8_t voicing)
             tones[1] = (uint8_t)(tones[1] + 12u);
     }
     sort_notes(tones, count);
+    return count;
 }
 
 int cs_resolve_easy_chord(const uint8_t raw_held[16], uint8_t scale_root, uint8_t voicing,
@@ -261,7 +296,7 @@ int cs_resolve_easy_chord(const uint8_t raw_held[16], uint8_t scale_root, uint8_
     for (i = 0; i < out->count; i++)
         if (out->notes[i] > 127u)
             out->notes[i] = 127u;
-    cs_apply_voicing(out->notes, out->count, voicing);
+    out->count = cs_apply_voicing(out->notes, out->count, voicing);
     easy_chord_name(out->root, out->type, name);
     return 1;
 }
@@ -309,7 +344,7 @@ void cs_scale_pad_chord(uint32_t pad, int8_t octave, uint8_t scale_root, uint8_t
         out->notes[i] = diatonic_pitch(base_c, scale_root, scale_type, deg + 2u * i);
     out->count = n_tones;
     identify_notes(out, name);
-    cs_apply_voicing(out->notes, out->count, voicing);
+    out->count = cs_apply_voicing(out->notes, out->count, voicing);
 }
 
 /* ----------------------------------------------------------- Auto-Strum --- */
