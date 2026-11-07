@@ -1,24 +1,41 @@
-# Handoff: Chordpad37
+# Handoff: Chad37
 
 For whoever picks this up next: another Claude session, another coding agent, or a person. Read this first, then
 [plan.md](plan.md). Updated 2026-11-07.
 
 ## What this is
 
-Chordpad37 is a MIDI controller firmware for the M-Vave SMK-37: Chordcade's Easy Chord on the keys and chords on the 16
+Chad37 is a MIDI controller firmware for the M-Vave SMK-37: Chordcade's Easy Chord on the keys and chords on the 16
 pads, with no internal sound. It's a fork of [Erik37](https://github.com/genkigenki/erik37) on fm1-base and
 felucca-bsp (both MPL-2.0, vendored in `base/` and `base/bsp/`, not submodules, so we change them directly).
 
-- **Repo:** https://github.com/superqix/chordpad37 (`origin`). Branch `main`.
+- **Repo:** https://github.com/superqix/chad37 (`origin`). Branch `main`.
 - **Owner:** Michael. He does every hands-on test on the keyboard; the code side is ours.
 
 ## Where it stands
 
 **Milestones M0 to M4 are done** ([plan.md](plan.md) has each one; M1's table has the hardware results).
 
-- **On the keyboard:** an SMK-37 **Elite** runs commit `29ccb99`. Michael plays it into Surge XT over USB and an
-  FM-1 over TRS.
+- **On the keyboard:** an SMK-37 **Elite** runs the Chad37 rename (the commit after `fed4cf1`). Michael plays it into
+  Surge XT over USB and an FM-1 over TRS.
 - **Local only:** `docs/review-handoff.md` (an older review by another agent) stays uncommitted at Michael's request.
+
+### The rename to Chad37 (2026-11-07)
+
+Chordpad37 became Chad37: a nod to Erik37, and short for CHord pAD. The boot screen shows Michael's own pixel-art head
+(36×36, made with Kenney's Avatar Mixer and kept in `app/logo/chad37.txt` under that tool's terms, not MPL-2.0;
+`app/tools/logo.py` turns it into `chad_logo.h` at build time, and `app_splash()` in `app/app.c` draws it).
+
+- **Names:** the screen shows `CHAD37`, Bluetooth `Chad37`, the USB port `Chad37 SMK-37`, packages
+  `chad37-smk37*.fwsc`. The package identity (`SMK-37 Elite_570100`) is unchanged, so it installs over Chordpad37.
+- **Saved presets:** the store's owner tag stays `CHORDPAD` (`FM1B_DATA_FAMILY` in `app/app.h`). Don't change it:
+  another tag makes the next boot clear the store.
+- **On the Elite:** installed over Chordpad37; the boot screen shows the head, the presets survived, and the USB port
+  is `Chad37 SMK-37`. Bluetooth needs the Mac to forget `Chordpad37` and pair `Chad37` (not yet done). Windows may
+  keep showing the old USB name until the device is removed in Device Manager.
+- **GitHub:** Michael renames the repository in its settings, `superqix/chordpad37` to `superqix/chad37` (GitHub
+  redirects the old URL); then `git remote set-url origin https://github.com/superqix/chad37`. This PC's checkout
+  stays in the folder `C:\GitHub\chordpad37`, so the paths below keep that name.
 
 ### Verified on the Elite
 
@@ -26,7 +43,7 @@ felucca-bsp (both MPL-2.0, vendored in `base/` and `base/bsp/`, not submodules, 
 |---|---|
 | Install and return to stock | `fm1_install.py` from stock and over itself; M-Vave's open workbench restores V016 with calibration intact |
 | Flash backup | Two identical 1 MiB reads ([flash-backup.md](flash-backup.md)) |
-| Bluetooth MIDI | Pairs with a Mac as `Chordpad37`, reconnects, long sessions beside USB audio |
+| Bluetooth MIDI | Pairs with a Mac (as `Chordpad37`), reconnects, long sessions beside USB audio |
 | USB MIDI and audio | Port `Chordpad37 SMK-37`; USB audio plays to the line out |
 | TRS MIDI out | Drives an FM-1, Program Change included |
 | Keys | Velocity 1–127, no stuck notes over hundreds of notes |
@@ -67,7 +84,7 @@ Michael's next step is more features; ask him which.
 ./build.sh
 ```
 
-All three models, packages in `build/chordpad37/`. One model, faster:
+All three models, packages in `build/chad37/`. One model, faster:
 
 ```bash
 export JIELI_TOOLCHAIN=$HOME/.jieli/toolchain AC79_SDK=$HOME/fw-AC79_AIoT_SDK
@@ -75,7 +92,7 @@ BOARD=smk37 MODEL=elite python3 base/tools/build.py app
 ```
 
 Without the two variables, packaging fails (`uboot.boot: No such file`). The package is
-`app/build/smk37-elite/chordpad-smk37-elite.fwsc`, identity `SMK-37 Elite_570100`. `build.py`'s size, RAM and
+`app/build/smk37-elite/chad37-smk37-elite.fwsc`, identity `SMK-37 Elite_570100`. `build.py`'s size, RAM and
 register checks must pass (RAM was 78,848 of 98,304 bytes at `29ccb99`).
 
 The repo has `core.autocrlf=false` locally, so the shell scripts keep LF endings for WSL. Run WSL commands as
@@ -103,10 +120,10 @@ in `bringup.txt` shifts the later counts. The installer tests also run on Window
 
 ```powershell
 python base/tools/fm1_install.py --info
-python base/tools/fm1_install.py app/build/smk37-elite/chordpad-smk37-elite.fwsc --yes
+python base/tools/fm1_install.py app/build/smk37-elite/chad37-smk37-elite.fwsc --yes
 ```
 
-- It installs from stock V016 (check step, then write) or over Chordpad37. Ask Michael before every flash.
+- It installs from stock V016 (check step, then write) or over Chad37. Ask Michael before every flash.
 - **After a flash, Surge XT must be restarted** (or the keyboard re-ticked in its MIDI settings): the keyboard
   reconnects USB and Surge doesn't reopen the port.
 - `fm1_install.py` can't install the stock package (a 36-block container).
@@ -144,6 +161,7 @@ instead. The stock package is also at `C:\GitHub\chordpad-SMK37\firmware\SMK-37 
 | Pad scan, velocity peak | `smk__pad()` in `base/bsp/boards/smk37/fm1_input.h` |
 | MIDI send per transport | `plat_midi_send()` in `base/device/plat_fm1.c` |
 | Bluetooth name, USB name | `ble_name` and `usb_product` in `app/fm1.toml` |
+| Boot screen | `app_splash()` in `app/app.c`; the art in `app/logo/chad37.txt` (one character per pixel, palette on top), made with Kenney's Avatar Mixer: not MPL-2.0, see [LICENSING.md](../LICENSING.md) |
 | Controls, LEDs, pins | [hardware-layout.md](hardware-layout.md) |
 | What stock V016 sends | [stock-midi-map.md](stock-midi-map.md) |
 

@@ -2,7 +2,7 @@
 -- Copyright (C) 2026 Michael Wilson
 -- Generates tests/easy_chord_vectors.inc by driving Chordcade's real engine, so the C port is
 -- checked against Chordcade rather than against itself. Run from a Chordcade checkout:
---   cd ~/GitHub/chorg && lua ~/GitHub/chordpad37/tests/gen_easy_chord_vectors.lua > ~/GitHub/chordpad37/tests/easy_chord_vectors.inc
+--   cd ~/GitHub/chorg && lua ~/GitHub/chad37/tests/gen_easy_chord_vectors.lua > ~/GitHub/chad37/tests/easy_chord_vectors.inc
 
 -- The engine only needs the Solar2D globals it touches at load time and while scheduling.
 _G.system = {

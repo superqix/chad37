@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Michael Wilson */
 /* Pure chord detection, scale mapping, diatonic chord generation, voicing/inversion,
- * non-blocking auto-strum queue, and arpeggiator step logic for Chordpad37 (M4).
+ * non-blocking auto-strum queue, and arpeggiator step logic for Chad37 (M4).
  * Hardware-independent so tests/run_host_tests.sh can verify all M4 music logic on the host. */
 #pragma once
 #include <stdint.h>

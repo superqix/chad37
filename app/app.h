@@ -1,18 +1,23 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Michael Wilson */
-/* Chordpad37: a MIDI controller for the M-Vave SMK-37, on fm1-base. This header is the app's half of the contract with
- * the platform (base/device/unity.c, base/host/plat_host.c). */
+/* Chad37 (CHord pAD, after Erik37): a MIDI controller for the M-Vave SMK-37, on fm1-base. This header is the app's
+ * half of the contract with the platform (base/device/unity.c, base/host/plat_host.c). */
 #pragma once
 #include <stdint.h>
 #include "plat.h"
 
 #if !BOARD_SMK37
-#error "Chordpad37 builds for the SMK-37 only (BOARD=smk37)"
+#error "Chad37 builds for the SMK-37 only (BOARD=smk37)"
 #endif
 
-#define APP_NAME "CHORDPAD"
+#define APP_NAME "CHAD37"
 #define APP_SPLASH_RGB RGB(242, 120, 72)
-#define APP_TAGLINE "a midi controller"
+#define APP_TAGLINE "a chord pad controller"
+#define APP_SPLASH                       /* the boot screen: the head (app/logo/chad37.txt), the name and the tagline */
+void app_splash(void);
+/* The store's owner tag (base/device/storage.c; default APP_NAME). It stays the name the presets were first saved
+ * under, Chordpad37's: another tag reads as someone else's data, and the store is cleared at the next boot. */
+#define FM1B_DATA_FAMILY "CHORDPAD"
 #ifndef APP_VERSION
 #define APP_VERSION "0.1"                /* (tools/build.py --release passes its own) */
 #endif

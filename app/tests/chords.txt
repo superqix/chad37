@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Michael Wilson
 # M4 Chord mode, Scale mode, SEQ REC pad assignment, Auto-Strum, Arpeggiator, and Global menu test.
 #   BOARD=smk37 python3 base/tools/build.py app --host
-#   app/build/smk37/host/chordpad-smk37_host app/tests/chords.txt OUTDIR
+#   app/build/smk37/host/chad37-smk37_host app/tests/chords.txt OUTDIR
 wait 1200
 expect preset 1
 expect chord_on 0

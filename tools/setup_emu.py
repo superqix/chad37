@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (C) 2026 Michael Wilson
-# Stages tools/fm1-emu/web/dist/ with the built Chordpad37 .fwsc packages as the default SMK-37 firmware,
+# Stages tools/fm1-emu/web/dist/ with the built Chad37 .fwsc packages as the default SMK-37 firmware,
 # and optionally starts a local HTTP server at http://localhost:8642/smk37/.
 import argparse
 import functools
@@ -46,11 +46,11 @@ def stage_dist() -> Path:
             shutil.copy2(src, DIST_SMK / name)
     shutil.copy2(wasm, DIST_SMK / "fm1_web.wasm")
 
-    # Copy built Chordpad37 .fwsc packages into dist/smk37/
+    # Copy built Chad37 .fwsc packages into dist/smk37/
     packages = [
-        ("chordpad", "Chordpad37 (SMK-37 Pro)", ROOT / "app/build/smk37/chordpad-smk37.fwsc"),
-        ("chordpad-elite", "Chordpad37 (SMK-37 Elite)", ROOT / "app/build/smk37-elite/chordpad-smk37-elite.fwsc"),
-        ("chordpad-mke", "Chordpad37 (MKE-P37)", ROOT / "app/build/smk37-mke/chordpad-smk37-mke.fwsc"),
+        ("chad37", "Chad37 (SMK-37 Pro)", ROOT / "app/build/smk37/chad37-smk37.fwsc"),
+        ("chad37-elite", "Chad37 (SMK-37 Elite)", ROOT / "app/build/smk37-elite/chad37-smk37-elite.fwsc"),
+        ("chad37-mke", "Chad37 (MKE-P37)", ROOT / "app/build/smk37-mke/chad37-smk37-mke.fwsc"),
     ]
     entries = []
     for fw_id, title, pkg_path in packages:
@@ -63,16 +63,16 @@ def stage_dist() -> Path:
                 "author": "Michael Wilson",
                 "license": "MPL-2.0",
                 "about": (
-                    "Chordpad37 custom controller firmware for the M-VAVE SMK-37: "
+                    "Chad37 custom controller firmware for the M-VAVE SMK-37: "
                     "4-state CHORD x SCALE mode matrix, Easy Chord + manual chord detection, "
                     "SEQ REC pad assignment, diatonic scale pads, auto-strum, arpeggiator, and 8 presets."
                 ),
-                "repo": "https://github.com/no2games/chordpad37",
+                "repo": "https://github.com/superqix/chad37",
                 "package": f"./{pkg_path.name}",
             })
 
     cat_src = json.loads((EMU_WEB / "smk37" / "firmwares.json").read_text(encoding="utf-8"))
-    existing = [f for f in cat_src.get("firmwares", []) if not f.get("id", "").startswith("chordpad")]
+    existing = [f for f in cat_src.get("firmwares", []) if not f.get("id", "").startswith(("chad37", "chordpad"))]
     cat_out = {
         "note": cat_src.get("note", ""),
         "default": entries[0]["id"] if entries else cat_src.get("default", "snoop37"),
@@ -89,11 +89,11 @@ def main() -> None:
     args = ap.parse_args()
 
     dist = stage_dist()
-    print(f"staged   {dist / 'smk37'} (default firmware: chordpad-smk37.fwsc)")
+    print(f"staged   {dist / 'smk37'} (default firmware: chad37-smk37.fwsc)")
     if args.serve:
         handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(dist))
         with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler) as httpd:
-            print(f"serving  http://localhost:{args.port}/smk37/?fw=chordpad")
+            print(f"serving  http://localhost:{args.port}/smk37/?fw=chad37")
             httpd.serve_forever()
 
 

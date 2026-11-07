@@ -1,8 +1,9 @@
-# Chordpad37
+# Chad37
 
 A MIDI controller firmware for the M-Vave SMK-37, with Chordcade's Easy Chord on the keys and chords on the 16 pads.
 It has no internal sound. Built on [fm1-base](https://github.com/charlesvestal/fm1-base) and
 [felucca-bsp](https://github.com/hugelton/felucca-bsp), forked from [Erik37](https://github.com/genkigenki/erik37).
+The name is a nod to Erik37 and short for CHord pAD; it was Chordpad37 until 2026-11-07.
 
 **Status: in use on an SMK-37 Elite; not released.** Keys, pads (velocity and pressure), knobs and faders in two banks,
 wheels, pedal and buttons go out over USB, Bluetooth and the TRS jack, on the stock V016 map except the faders (CC
@@ -31,10 +32,10 @@ Firmware, on Linux or WSL with JieLi's toolchain (`base/tools/get_toolchain.sh`)
 ./build.sh
 ```
 
-Each model has its own package in `build/chordpad37/` (`chordpad-smk37.fwsc` for SMK-37 Pro, `chordpad-smk37-elite.fwsc` for SMK-37 Elite, `chordpad-smk37-mke.fwsc` for MKE-P37). Install the package matching your model with:
+Each model has its own package in `build/chad37/` (`chad37-smk37.fwsc` for SMK-37 Pro, `chad37-smk37-elite.fwsc` for SMK-37 Elite, `chad37-smk37-mke.fwsc` for MKE-P37). Install the package matching your model with:
 
 ```bash
-python3 base/tools/fm1_install.py build/chordpad37/chordpad-smk37-elite.fwsc
+python3 base/tools/fm1_install.py build/chad37/chad37-smk37-elite.fwsc
 ```
 
 ## Licence

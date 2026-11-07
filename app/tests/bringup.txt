@@ -3,7 +3,7 @@
 # The M3 controller in the host simulator: Stock V016 mappings, 2 knob & fader banks, pads with velocity
 # and channel pressure, buttons, wheels, pedal, 8 presets with auto-save across reboot, and Note-Off recovery.
 #   BOARD=smk37 python3 base/tools/build.py app --host
-#   app/build/smk37/host/chordpad-smk37_host app/tests/bringup.txt OUTDIR
+#   app/build/smk37/host/chad37-smk37_host app/tests/bringup.txt OUTDIR
 wait 1200
 shot boot.png
 # nothing goes out at boot, whatever the controls' positions

@@ -4,8 +4,8 @@ Before the first install, read the whole 1 MiB flash while the stock app is stil
 in [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37)'s `docs/02-update-and-recovery.md`, written here for
 this repo's tools and a Windows PC.
 
-**Do the backup and the first install in one sitting.** The check step can leave the keyboard in Chordpad37's
-update mode until an install finishes. From there, the way back to stock is to install Chordpad37 and then use
+**Do the backup and the first install in one sitting.** The check step can leave the keyboard in Chad37's
+update mode until an install finishes. From there, the way back to stock is to install Chad37 and then use
 M-Vave's updater. That return is untested on this keyboard until M1 tries it. On the first try, an Elite on V016
 came back from the UBOOT disk to stock rather than to the update mode, so this may not happen.
 
@@ -40,7 +40,7 @@ keyboard.
 2. **Check step and UBOOT,** in a normal PowerShell in this repo:
 
    ```powershell
-   python base/tools/fm1_install.py app/build/smk37-elite/chordpad-smk37-elite.fwsc --check-only --uboot
+   python base/tools/fm1_install.py app/build/smk37-elite/chad37-smk37-elite.fwsc --check-only --uboot
    ```
 
    Answer `y`. Expect, in order:
@@ -69,11 +69,11 @@ keyboard.
    `SHA256SUMS` and a `README.txt`. If any check fails, run it again; don't trust a failed dump.
 4. **Keep two copies** of that folder, one off this PC. Never put it in a repository: `0xC0000–0xC1FFF`
    (calibration, Bluetooth pairing) and `0xFF000–0xFFFFF` (key data) are unique to this keyboard.
-5. **Power-cycle the keyboard.** It starts in Chordpad37's update loader (`ota-SMK-37 Elite_900`). Finish the
+5. **Power-cycle the keyboard.** It starts in Chad37's update loader (`ota-SMK-37 Elite_900`). Finish the
    install:
 
    ```powershell
-   python base/tools/fm1_install.py app/build/smk37-elite/chordpad-smk37-elite.fwsc
+   python base/tools/fm1_install.py app/build/smk37-elite/chad37-smk37-elite.fwsc
    ```
 
 ## If something goes wrong

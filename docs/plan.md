@@ -1,4 +1,4 @@
-# Chordpad37: pure MIDI controller firmware for the SMK-37, on Erik37
+# Chad37: pure MIDI controller firmware for the SMK-37, on Erik37
 
 ## Context
 
@@ -25,7 +25,7 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 | Easy Chord | `app/easy_chord.c/.h`, tests, vectors | Copy from `chordpad-SMK37`, branch `easy-chord`; header becomes MPL-2.0 |
 | Stock capture sheet | `docs/stock-midi-map.md` | Copy from the same branch |
 
-`app/fm1.toml`: name `CHORDPAD`, USB product `Chordpad37 SMK-37`, `ble = true` with `ble_name` `Chordpad37`, and our own unused `smk_id_prefix`.
+`app/fm1.toml`: name `CHAD37`, USB product `Chad37 SMK-37`, `ble = true` with `ble_name` `Chad37`, and our own unused `smk_id_prefix`.
 
 ## Milestones
 
@@ -54,7 +54,7 @@ Build a pure MIDI controller firmware for the SMK-37 with Chordcade's Easy Chord
 | Toolchain | Proven by our own Elite build. The unmodified Erik37 build was skipped. |
 | Flash backup | Two identical 1 MiB reads, `trimdat` at `0xC1224` ([flash-backup.md](flash-backup.md)). |
 | Install | `fm1_install.py` from stock and over itself. |
-| Bluetooth MIDI | Pairs with a Mac as `Chordpad37`, and reconnects after a power-cycle. Long sessions driving Surge XT, with MIDI Learn and USB audio running at the same time, without a crash. |
+| Bluetooth MIDI | Pairs with a Mac as `Chordpad37` (the name then), and reconnects after a power-cycle. Long sessions driving Surge XT, with MIDI Learn and USB audio running at the same time, without a crash. |
 | USB audio | Appears and plays to the line out. Using USB and the line out into the same speakers gave a ground-loop hum. Windows keeps the first name it saw for `1209:0001` on a port (here a GemmaOne FM-1) until the device is uninstalled. |
 | K1–K8 | Panel order, CC 70–77 in the bring-up app. Right raises all eight. They are endless: the app's value moves a few steps per detent. |
 | K5 | It is MASTER: the platform reads it as the volume, and it scales USB audio playback. Whether it stays the volume or becomes a CC only (USB audio then at a fixed level) is an M3 decision. |

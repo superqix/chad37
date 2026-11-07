@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 Michael Wilson */
-/* Chordpad37 controller and chord/scale/arpeggiator layer (M3 + M4):
+/* Chad37 controller and chord/scale/arpeggiator layer (M3 + M4):
  *   - 37-key velocity keybed, 16 velocity + pressure RGB pads, 2x8 endless encoders (KNOB BANK),
  *     2x4 faders (FADER BANK), pitch & mod wheels, sustain/expression pedal jack, and panel buttons.
  *   - 4-state Mode Matrix on CHORD (B_ENV) and SCALE (B_SEL):
@@ -1420,6 +1420,30 @@ static void input(void)
 }
 
 void app_input_only(void) { input(); }
+
+/* ----------------------------------------------------------------- splash --- */
+#include "chad_logo.h"                   /* generated at build time from app/logo/chad37.txt (app/tools/logo.py) */
+#define LOGO_S 4u                        /* screen pixels per art pixel */
+#define LOGO_X ((240u - CHAD_LOGO_W * LOGO_S) / 2u)
+#define LOGO_Y 12u
+_Static_assert(LOGO_Y + CHAD_LOGO_H * LOGO_S + 6u + 64u <= 240u, "the head, the name and the tagline fit the screen");
+
+/* the boot screen (APP_SPLASH): the head, then the name and the tagline, on the platform's paper */
+void app_splash(void)
+{
+    const uint16_t paper = RGB(250, 244, 232);
+    lcd_fill(0, 0, 240, 240, paper);
+    for (uint32_t i = 0; i < CHAD_LOGO_NRUNS; i++) {
+        const uint8_t *r = chad_logo_runs[i];                        /* y, x, n, colour */
+        lcd_fill(LOGO_X + r[1] * LOGO_S, LOGO_Y + r[0] * LOGO_S, r[2] * LOGO_S, LOGO_S, chad_logo_pal[r[3]]);
+    }
+    cv_begin(240, 64, paper);
+    int32_t w = text_w(&APP_BIG_FONT, APP_NAME);
+    cv_text((240 - w) / 2, 0, &APP_BIG_FONT, APP_NAME, APP_SPLASH_RGB);
+    w = text_w(&FONT_S, APP_TAGLINE);
+    cv_text((240 - w) / 2, 42, &FONT_S, APP_TAGLINE, RGB(150, 136, 118));
+    cv_blit(0, LOGO_Y + CHAD_LOGO_H * LOGO_S + 6u);
+}
 
 /* --------------------------------------------------------------------- UI --- */
 static void value_cell(int32_t x, int32_t y, const char *label, int32_t v, int is_rel)

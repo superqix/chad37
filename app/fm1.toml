@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (C) 2026 Michael Wilson
-# Chordpad37's build settings (fm1-base's tools/build.py: ./build.sh)
-name = "CHORDPAD"              # the build's files: chordpad-smk37{,-elite,-mke}.fwsc
+# Chad37's build settings (fm1-base's tools/build.py: ./build.sh)
+name = "CHAD37"                # the build's files: chad37-smk37{,-elite,-mke}.fwsc
 id_prefix = "FM-1_5701"        # package identity family; only the SMK-37 builds are made
 smk_id_prefix = "5701"         # SMK-37 Pro_5701 + id_suffix (four digits keep the Elite's name within 20)
 id_suffix = "00"
-usb_manufacturer = "chordpad37"
-usb_product = "Chordpad37"     # the build adds " SMK-37" (the installers find the keyboard by it)
+usb_manufacturer = "chad37"
+usb_product = "Chad37"         # the build adds " SMK-37" (the installers find the keyboard by it)
 words = "words.tsv"
+gen = ["tools/logo.py logo/chad37.txt --out {gen}/chad_logo.h"]   # the boot screen's head (app_splash)
 ble = true                     # Bluetooth MIDI (--no-ble leaves it out); works on an SMK-37 Elite
-ble_name = "Chordpad37"        # the Bluetooth MIDI name (fm1-base's default: FM-1)
+ble_name = "Chad37"            # the Bluetooth MIDI name (fm1-base's default: FM-1)
 licence = "MPL-2.0"
-credits = "Built on Erik37, fm1-base and felucca-bsp."
+credits = "Built on Erik37, fm1-base and felucca-bsp. Head art made with Kenney's Avatar Mixer."
