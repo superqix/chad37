@@ -141,8 +141,16 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
   - `SEQ REC` armed: Blinking red
   - Active / playing / arpeggiating pad: Bright white/orange
 
+### After M4 (2026-11-07, on the Elite)
+- **Pad velocity:** the peak is read while the reading still rises (up to 6 samples, about 14 ms), since quick taps
+  were read at the curve's floor; `PAD MIN` on the hardware page (K6) sets a velocity floor.
+- **Faders** moved to CC 20–27 (see M3), **LATCH** on `NOTE REPEAT` (see M4 §2), and the `<` `>` arrows send Program
+  Change (see M3).
+- Open items and what's untested on the keyboard: [handoff.md](handoff.md).
+
 ### Later, separate decisions
-Web preset editor over `APP_SYSEX`, note repeat, pads 17–32, manual wheel strum, USB-to-TRS thru, and a public release.
+Web preset editor over `APP_SYSEX`, note repeat (its button is LATCH now), pads 17–32, manual wheel strum, USB-to-TRS
+thru, and a public release.
 
 ## Verification
 

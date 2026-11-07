@@ -4,10 +4,11 @@ A MIDI controller firmware for the M-Vave SMK-37, with Chordcade's Easy Chord on
 It has no internal sound. Built on [fm1-base](https://github.com/charlesvestal/fm1-base) and
 [felucca-bsp](https://github.com/hugelton/felucca-bsp), forked from [Erik37](https://github.com/genkigenki/erik37).
 
-**Status: bring-up only, running on an SMK-37 Elite.** The app shows every control on screen and sends it over USB and
-Bluetooth, to check the hardware. CC numbers are placeholders until the stock map in `docs/stock-midi-map.md` is
-applied. Easy Chord
-is in `app/` and tested on a computer, but isn't connected to the keys or pads yet. There is no TRS MIDI out yet.
+**Status: in use on an SMK-37 Elite; not released.** Keys, pads (velocity and pressure), knobs and faders in two banks,
+wheels, pedal and buttons go out over USB, Bluetooth and the TRS jack, on the stock V016 map except the faders (CC
+20–27). CHORD and SCALE modes put Easy Chord on the keys and chords on the pads, with pad assignment, LATCH, voicings,
+auto-strum and an arpeggiator; 8 presets are saved on the keyboard. The Pro and MKE-P37 builds have never been
+installed. Where things stand and what's next: [docs/handoff.md](docs/handoff.md).
 
 ## Before installing
 

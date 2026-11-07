@@ -1,97 +1,163 @@
-# Handoff: Chordpad37 on the PC
+# Handoff: Chordpad37
 
-For a Claude session on the Windows PC, picking up from a session on the Mac. Read this, then `docs/plan.md` (the
-approved plan) and `README.md`.
+For whoever picks this up next: another Claude session, another coding agent, or a person. Read this first, then
+[plan.md](plan.md). Updated 2026-11-07.
 
 ## What this is
 
-Chordpad37 is a MIDI controller firmware for the M-Vave SMK-37: Chordcade's Easy Chord on the keys and chords on the
-16 pads, with no internal sound. It's a fork of [Erik37](https://github.com/genkigenki/erik37), which runs on
-fm1-base and felucca-bsp (both MPL-2.0, vendored in `base/` and `base/bsp/`, not submodules).
+Chordpad37 is a MIDI controller firmware for the M-Vave SMK-37: Chordcade's Easy Chord on the keys and chords on the 16
+pads, with no internal sound. It's a fork of [Erik37](https://github.com/genkigenki/erik37) on fm1-base and
+felucca-bsp (both MPL-2.0, vendored in `base/` and `base/bsp/`, not submodules, so we change them directly).
 
-It replaces the `smk37_open` plan. Don't continue that one.
-
-- **Repo:** https://github.com/superqix/chordpad37 (`origin`), with Erik37 as `upstream`.
-- **Branch:** `main`. Erik37 1.2 (`c06c1f7`), then our commits.
+- **Repo:** https://github.com/superqix/chordpad37 (`origin`). Branch `main`.
+- **Owner:** Michael. He does every hands-on test on the keyboard; the code side is ours.
 
 ## Where it stands
 
-**Update, 2026-11-02: M0 and M1 are done on the PC.** The stock map is filled in (`docs/stock-midi-map.md`), the flash
-is backed up (`docs/flash-backup.md`; the dumps stay off the repo), and M1 passed on an SMK-37 Elite: see the results
-table under M1 in `docs/plan.md`. The keyboard is back on stock V016 while features are built. The app now advertises
-over Bluetooth as `Chordpad37` and over USB as `Chordpad37 SMK-37`. The sections below describe the state when this
-handoff was written; "Never done" and the steps under "What to do next" are history.
+**Milestones M0 to M4 are done** ([plan.md](plan.md) has each one; M1's table has the hardware results).
 
-**Done on the Mac, tested in the host simulator only:**
-- The piano engine, samples, fonts, site and Erik37's tools are removed.
-- `app/app.c` is a bring-up app. It shows every control on screen and sends:
-  - keys on channel 1 from note 48, and pads on channel 10 from note 36 at a fixed velocity of 100;
-  - knobs as CC 70–77 and faders as CC 20–23, both placeholders until the stock capture is done;
-  - the mod wheel as CC 1, and pitch bend.
-  - The pedal and buttons are only shown on screen. Audio is silent and incoming MIDI is dropped.
-  - Everything goes to USB and Bluetooth. K5 and the faders take their first reading as a baseline, so nothing is
-    sent at boot.
-- `app/easy_chord.c/.h` with 940 test vectors in `tests/`. Not connected to the keys or pads yet (that's M4).
-- `docs/stock-midi-map.md`, the sheet for capturing what stock V016 sends.
-- One change in `base/`: `_POSIX_C_SOURCE` raised to `200112L` in `base/host/plat_host.c`, so the simulator builds on
-  macOS.
-- `app/fm1.toml`: name `CHORDPAD`, `smk_id_prefix "5701"` (not checked against other firmware), `ble = true`.
-- `app/words.tsv` has a placeholder URL (`superqix.github.io/chordpad37/words/`), because the build requires one.
+- **On the keyboard:** an SMK-37 **Elite** runs commit `29ccb99`. Michael plays it into Surge XT over USB and an
+  FM-1 over TRS.
+- **Not pushed:** `main` is 9 commits ahead of `origin`. Push only when Michael asks.
+- **Local only:** `docs/review-handoff.md` (an older review by another agent) stays uncommitted at Michael's request.
 
-**Never done:** a firmware build with JieLi's toolchain, or anything on the keyboard.
+### Verified on the Elite
 
-## Tests
+| Area | Result |
+|---|---|
+| Install and return to stock | `fm1_install.py` from stock and over itself; M-Vave's open workbench restores V016 with calibration intact |
+| Flash backup | Two identical 1 MiB reads ([flash-backup.md](flash-backup.md)) |
+| Bluetooth MIDI | Pairs with a Mac as `Chordpad37`, reconnects, long sessions beside USB audio |
+| USB MIDI and audio | Port `Chordpad37 SMK-37`; USB audio plays to the line out |
+| TRS MIDI out | Drives an FM-1, Program Change included |
+| Keys | Velocity 1–127, no stuck notes over hundreds of notes |
+| Pads | Velocity and pressure; after the peak fix (`3943490`), 0 of 109 hits under velocity 20 |
+| Faders | CC 20–27 (fader 1 MIDI-learns in Surge XT); saved presets migrated from 64–71 |
+| CHORD mode, chord pads, LATCH | Work in Surge XT; latched chords end cleanly |
+| `<` `>` arrows | Program Change; the FM-1 follows, Surge XT ignores Program Change |
+
+### Not yet tested on the keyboard
+
+- **Knobs and pitch bend** on the M2–M4 firmware. They worked in the M1 bring-up app; nobody has turned them since.
+- **SCALE mode, Easy Chord on the keys, ARP, auto-strum, PAD MIN, presets 2–8, KNOB / FADER BANK 2.** Host-tested only.
+- **Pedal:** no pedal on hand.
+- **Releasing notes on entering UBOOT** (`release_notes()` in `base/device/main_fm1.c`) with notes held.
+- **SMK-37 Pro and MKE-P37 builds:** built, never installed.
+
+## Open items
+
+Small, known, none blocking:
+
+1. **Mod wheel jitter:** it sends ±1 at rest (34/35, 51/52). Add a dead band in `wheels_input()` (`app/app.c`).
+2. **K5 "CC ONLY" plays USB audio at half level:** `app_gain()` returns 2048 of a 0–4096 scale; full level is 4096.
+3. **An expression pedal resting above 0 blocks auto-save:** the save condition in `input()` checks `!ui.pedal_val`.
+4. **Arp and strum timing:** [plan.md](plan.md) says they run on the 1 kHz `app_tick`; they run from the main-loop
+   input pass (`input()`), so their timing follows the loop.
+5. **Program Change for PC synths:** if one ignores a bare Program Change, the arrows could send Bank Select (CC 0 / 32)
+   first. Michael hasn't asked for it.
+6. **The arrows' program number starts at 0 each power-on:** a synth can't report its patch. Persisting it per preset
+   (`preset_t.rsv0` is free) is an option.
+
+Michael's next step is more features; ask him which.
+
+## Working on it
+
+### Build (WSL Ubuntu-24.04, from `/mnt/c/GitHub/chordpad37`)
+
+```bash
+./build.sh
+```
+
+All three models, packages in `build/chordpad37/`. One model, faster:
+
+```bash
+export JIELI_TOOLCHAIN=$HOME/.jieli/toolchain AC79_SDK=$HOME/fw-AC79_AIoT_SDK
+BOARD=smk37 MODEL=elite python3 base/tools/build.py app
+```
+
+Without the two variables, packaging fails (`uboot.boot: No such file`). The package is
+`app/build/smk37-elite/chordpad-smk37-elite.fwsc`, identity `SMK-37 Elite_570100`. `build.py`'s size, RAM and
+register checks must pass (RAM was 78,848 of 98,304 bytes at `29ccb99`).
+
+The repo has `core.autocrlf=false` locally, so the shell scripts keep LF endings for WSL. Run WSL commands as
+`wsl -d Ubuntu-24.04 bash -lc 'cd /mnt/c/GitHub/chordpad37 && ...'` (Git Bash mangles `wsl --cd /mnt/c/...`).
+
+### Tests (WSL)
 
 ```bash
 sh app/tests/run_tests.sh
 ```
 
-Easy Chord vectors under ASan and UBSan, then the bring-up script in the simulator (`app/tests/bringup.txt`). Both
-pass on the Mac.
+```bash
+sh tests/run_host_tests.sh
+```
 
 ```bash
 sh base/tests/run_tests.sh
 ```
 
-Passes, except the update-path test, which is skipped without a template package.
+The app tests run every `app/tests/*.txt` scenario in the host simulator (`expect`, `expect_out USB|BLE|TRS ...`,
+`tap`, `tappad`, `fader`, `spin`, `turn`). `expect midi_out N` counts every message sent so far, so adding output earlier
+in `bringup.txt` shifts the later counts. The installer tests also run on Windows: `python base/tests/install_test.py`.
 
-## What to do next on the PC
+### Install (Windows PowerShell, Python 3.13 with `mido` and `python-rtmidi`)
 
-Milestones M0 and M1 in `docs/plan.md`. In order:
+```powershell
+python base/tools/fm1_install.py --info
+python base/tools/fm1_install.py app/build/smk37-elite/chordpad-smk37-elite.fwsc --yes
+```
 
-1. **Ask whether the earlier PC session already has** a filled-in stock capture or a verified flash backup. Reuse them
-   if so.
-2. **Fill in `docs/stock-midi-map.md` while the keyboard is still on stock V016.** It's the spec for M3, and can't be
-   done later without returning to stock.
-3. **Confirm the model:** Pro, Elite or MKE. Each needs its own package.
-4. **Set up the build in WSL2,** not native Windows:
-   - `base/tools/get_toolchain.sh` (installs to `~/.jieli/toolchain`);
-   - the AC79 SDK `AC79NN_SDK_V1.2.1_2023-12-13` at `~/fw-AC79_AIoT_SDK`, or set `AC79_SDK`;
-   - Python 3 with Pillow (and libraqm) and NumPy.
-5. **Build unmodified Erik37 first** (`git checkout c06c1f7`) to prove the toolchain, then `main` with `./build.sh`.
-   `build.py`'s size, RAM and register checks must pass.
-6. **Take a full flash backup before the first install,** using Method A in `02-update-and-recovery.md` of
-   [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37): run only the update's check step, send the UBOOT key,
-   read the flash twice with `jl-uboot-tool`, check the SHA-256 values match and `trimdat` is at `0xC1224`.
-   (Done: `fm1_install.py --check-only --uboot` and `tools/smk_backup.py`.)
-7. **Install and test** as listed in M1: Bluetooth MIDI, USB audio, K1–K8 order and direction, K5, faders, wheels,
-   pedal, latency, and returning to stock with M-Vave's updater.
+- It installs from stock V016 (check step, then write) or over Chordpad37. Ask Michael before every flash.
+- **After a flash, Surge XT must be restarted** (or the keyboard re-ticked in its MIDI settings): the keyboard
+  reconnects USB and Surge doesn't reopen the port.
+- `fm1_install.py` can't install the stock package (a 36-block container).
 
-**Stop and review with Michael if Bluetooth or the return to stock fails.**
+### Watching what the keyboard sends
 
-## Rules that matter
+The quickest check is a timed `mido` logger on Windows that opens every input whose name contains `SMK` and writes one
+line per message. **Windows MIDI inputs are single-client:** while a logger holds the port, Surge XT gets nothing. Ask
+Michael before recording, and say how long it runs.
+
+### Back to stock
+
+[open.m-vave.com](https://open.m-vave.com), the SMK-37 Elite page: tick **Force flash**, then **Restore factory V16**,
+and confirm the target `SMK-37 Elite_016`. The purple Force flash button on its own installs M-Vave's "Elite Open V01"
+instead. The stock package is also at `C:\GitHub\chordpad-SMK37\firmware\SMK-37 Elite_016.fwsc`.
+
+### Hardware facts
+
+- The Elite's flash is the FM-1's Puya part, JEDEC `0x856014` (the board accepts it and `0xEB6014`), chip key `0x980F`.
+- K5 is the MASTER virtual pot: the platform reads it as the volume, and the app also sends it as a CC.
+- The knobs are endless encoders.
+- Pad LEDs are on SPI1 at PC8–PC10; TRS out is UART1 TX on PC7.
+- Windows may show the audio device under the name of the first `1209:0001` device it saw on that port (here
+  "GemmaOne FM-1") until it's uninstalled in Device Manager.
+
+## Where things are
+
+| What | Where |
+|---|---|
+| Controller, modes, LATCH, arrows, presets, screen | `app/app.c` (one unity file; `app/app.h` for store objects) |
+| Note ownership and per-transport note-off retry | `app/note_refs.c` |
+| Chords, scales, voicings, strum, arp | `app/chord_scale.c`, `app/easy_chord.c` |
+| Preset store | `presets_store_t` in `app/app.c`, magic `CPD2`, one object of at most 3,840 bytes; `store_load()` migrates `CPD1` |
+| TRS out driver | `base/bsp/boards/smk37/fm1_trs_tx.h` |
+| Pad scan, velocity peak | `smk__pad()` in `base/bsp/boards/smk37/fm1_input.h` |
+| MIDI send per transport | `plat_midi_send()` in `base/device/plat_fm1.c` |
+| Bluetooth name, USB name | `ble_name` and `usb_product` in `app/fm1.toml` |
+| Controls, LEDs, pins | [hardware-layout.md](hardware-layout.md) |
+| What stock V016 sends | [stock-midi-map.md](stock-midi-map.md) |
+
+## Rules
 
 - **Flash:** never write `0x0–0x3FFF`, `0xC0000–0xC1FFF`, `0xF4000–0xFDFFF` or `0xFF000–0xFFFFF` (calibration,
-  pairing, key data). `base/bsp/boards/smk37/fm1_flash_map.h` enforces this; don't weaken it. The first install clears
-  stock settings, and stock rebuilds them on return.
+  pairing, key data). `base/bsp/boards/smk37/fm1_flash_map.h` enforces it; don't weaken it. Store objects go to
+  `0x9D000–0xAEFFF`.
 - **Store:** at most 9 objects of 3,840 bytes each on the SMK-37.
-- **Registers:** only inside `base/bsp/`. `build.py` rejects them anywhere else, so the TRS out driver (M2) goes in
-  `base/bsp/boards/smk37/`.
-- **Licensing:** MPL-2.0, with a header on every file. Don't copy GPL code (Snoop37, `smk_uart_tx.h`). The port kit's
-  text is CC BY-NC, so write our own wording and credit it.
+- **Registers:** only inside `base/bsp/`; `build.py` rejects them anywhere else.
+- **Licensing:** MPL-2.0 with a header on every file. Don't copy GPL code (Snoop37, `smk_uart_tx.h`). The port kit's
+  text is CC BY-NC: write our own wording and credit it.
+- **Backups:** flash dumps hold unit-unique data. They live in `C:\Users\no2ga\smk37-backups\`, never in a repository.
+  `jl-uboot-tool` gets only `read`; never `erase`, `write`, `erasechip` or `burnchipkey`.
 - **Git:** commit and push only when Michael asks.
-
-## Older work, for reference only
-
-`chordpad-SMK37` has a local-only `easy-chord` branch (commit `d5d6753`) on the Mac. It was never pushed. Everything
-useful from it is already copied into this repo.
+- **Stop and review with Michael** if Bluetooth or the return to stock ever fails.
