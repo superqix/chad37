@@ -86,6 +86,7 @@ enum { PEDAL_AUTO, PEDAL_OPEN, PEDAL_CLOSED, PEDAL_EXPR, NPEDAL_MODES };
 enum { K5_CC_VOL, K5_CC_ONLY, NK5_MODES };
 enum { CURVE_FACTORY, CURVE_SOFT, CURVE_HARD, CURVE_FIXED, NCURVES };
 enum { PG_MAIN, PG_EDIT, PG_GLOBAL, PG_SCALE, PG_ARP, PG_HW, NPAGES };
+enum { CHORD_HELP_NONE, CHORD_HELP_ASSIGN, CHORD_HELP_EASY };
 
 /* --------------------------------------------------------------- store --- */
 #define STORE_MAGIC 0x33445043u          /* "CPD3": every knob absolute, K7-K8 on CC 54-55, K9-K16 on CC 102-109 */
@@ -154,6 +155,9 @@ static struct {
     uint32_t latched_pad;                /* the pad LATCH holds (bit p), kept in pads_on after it is let go */
     uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
     uint8_t rec_arm;                     /* SEQ REC armed for pad chord assignment */
+    uint8_t chord_help;                  /* entry hint, dismissed by the first key/pad strike */
+    uint8_t chord_help_seen;             /* show the assignment introduction once per session */
+    uint8_t chord_view_first, chord_view_last; /* keep the displayed octave range steady after release */
     cs_chord_t latched_chord;            /* last played/detected chord, unvoiced (SEQ REC stores it on a pad) */
     cs_chord_t key_ec_prev;              /* previous Easy Chord held on keys */
     uint64_t keys_on;                    /* keybed keys physically held */
@@ -467,6 +471,19 @@ static void say_control(const char *what, int32_t v)
     app_say(what, t);
 }
 
+static int say_chord_help(void)
+{
+    if (!ann_on() || !ui.chord_on || (ui.page != PG_MAIN && ui.page != PG_SCALE))
+        return 0;
+    if (ui.chord_help == CHORD_HELP_ASSIGN)
+        ann_say("SEQ REC, then tap a pad to assign the active chord", 0, ANN_NOW);
+    else if (ui.chord_help == CHORD_HELP_EASY)
+        ann_say("Hold a root for a major chord. Add nearby keys on its left to change the chord. Play any key or pad to start.", 0, ANN_NOW);
+    else
+        return 0;
+    return 1;
+}
+
 static void save_now(int quiet_toast)
 {
     all_notes_off();
@@ -524,6 +541,11 @@ static void keys_input(void)
     uint64_t hits = plat_keybed_hits(), now = plat_keybed(), off = ui.keys_on & ~now;
     uint32_t k;
     uint8_t ch = pr->key_ch & 15u;
+
+    if (hits && ui.chord_help) {
+        ui.chord_help = CHORD_HELP_NONE;
+        ui.redraw = 1;
+    }
 
     /* Easy Chord mode (CHORD on + SCALE on) */
     if (ui.chord_on && ui.scale_on) {
@@ -659,6 +681,11 @@ static void pads_input(void)
     uint32_t hits = plat_pad_hits(), held = plat_pads_held(), p;
     uint8_t max_press = 0, press_moved = 0;
     int latch = latch_active();
+
+    if (hits && ui.chord_help) {
+        ui.chord_help = CHORD_HELP_NONE;
+        ui.redraw = 1;
+    }
 
     /* Shortcut: holding PATCH (B_HOME) + tapping Pad 1..8 selects Preset 1..8 without sounding a note */
     if ((plat_buttons() & (1u << B_HOME)) && (hits & 0xFFu)) {
@@ -1217,7 +1244,16 @@ static void buttons_input(void)
         ui.chord_on ^= 1u;
         if (!ui.chord_on)
             ui.rec_arm = 0;
+        if (ui.chord_on) {
+            ui.page = PG_MAIN;
+            ui.chord_help = ui.scale_on ? CHORD_HELP_EASY :
+                ui.chord_help_seen ? CHORD_HELP_NONE : CHORD_HELP_ASSIGN;
+            ui.chord_help_seen = 1;
+        } else {
+            ui.chord_help = CHORD_HELP_NONE;
+        }
         app_say("CHORD", ui.chord_on ? (ui.scale_on ? "EASY CHORD" : "ON") : "OFF");
+        say_chord_help();
     }
 
     /* SCALE (B_SEL): turns Scale on and opens PG_SCALE; if already on PG_SCALE, turns Scale off */
@@ -1226,7 +1262,11 @@ static void buttons_input(void)
             all_notes_off();
             ui.scale_on = 1;
             ui.page = PG_SCALE;
+            if (ui.chord_on) {
+                ui.chord_help = CHORD_HELP_EASY;
+            }
             app_say("SCALE ON", CS_SCALE_NAMES[st.scale_type]);
+            say_chord_help();
         } else if (ui.page != PG_SCALE) {
             ui.page = PG_SCALE;
             app_say("SCALE PAGE", CS_SCALE_NAMES[st.scale_type]);
@@ -1234,6 +1274,7 @@ static void buttons_input(void)
             all_notes_off();
             ui.scale_on = 0;
             ui.page = PG_MAIN;
+            ui.chord_help = CHORD_HELP_NONE;
             app_say("SCALE", "OFF");
         }
         ui.redraw = 1;
@@ -1283,6 +1324,7 @@ static void buttons_input(void)
     /* SEQ REC (B_REC): arms pad assignment in CHORD mode; sends CC 57 (127/0) when CHORD mode is off */
     if (ui.chord_on) {
         if (down & (1u << B_REC)) {
+            ui.chord_help = CHORD_HELP_NONE;
             ui.rec_arm ^= 1u;
             app_say("PAD ASSIGN", ui.rec_arm ? "TAP A PAD" : "CANCELLED");
         }
@@ -1741,9 +1783,15 @@ static void draw_footer(const preset_t *pr)
     cv_blit(0, 180);
 }
 
+#include "chord_ui.c"                   /* chord performance view and illustrated Easy Chord introduction */
+
 static void draw(void)
 {
     const preset_t *pr = cur_preset();
+    if (ui.chord_on && (ui.page == PG_MAIN || ui.page == PG_SCALE)) {
+        draw_chord_view(pr);
+        return;
+    }
     draw_header(pr);
     if (ui.page == PG_EDIT)
         draw_edit_body(pr);
@@ -1784,8 +1832,10 @@ void app_frame(void)
         ui.redraw = 1;
     }
     input();
-    if (ann_on() && ann_where())
-        ann_say(APP_NAME, cur_preset()->name, ANN_NOW);
+    if (ann_on() && ann_where()) {
+        if (!say_chord_help())
+            ann_say(APP_NAME, ui.chord_on && ui.chord_name[0] ? ui.chord_name : cur_preset()->name, ANN_NOW);
+    }
     ann_tick(now);
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
@@ -1888,6 +1938,8 @@ int app_expect(const char *what, int *got)
         *got = ui.latched_pad ? __builtin_ctz(ui.latched_pad) + 1 : 0;
     else if (!strcmp(what, "rec_arm"))
         *got = ui.rec_arm;
+    else if (!strcmp(what, "chord_help"))
+        *got = ui.chord_help;
     else if (!strcmp(what, "scale_root"))
         *got = st.scale_root;
     else if (!strcmp(what, "scale_type"))

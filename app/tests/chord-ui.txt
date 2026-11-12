@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
+# Chord entry hints, the illustrated Easy Chord introduction, and the shared playing layout.
+# Also produces review screenshots directly from the 240x240 simulator.
+wait 1200
+ble connect
+listen
+tap ENV
+wait 1400
+expect chord_on 1
+expect chord_help 1
+expect active_notes 0
+said SEQ REC, then tap a pad
+shot chord-intro.png
+
+# Manual chord: the keybed shows the notes that actually sound, not a canned illustration.
+keybed 12 down
+keybed 16 down
+keybed 19 down
+wait 40
+expect chord_help 0
+expect active_notes 3
+shot chord-playing.png
+keybed 12 up
+keybed 16 up
+keybed 19 up
+wait 40
+expect active_notes 0
+shot chord-released.png
+
+# The existing REC-then-pad gesture stores the chord, with a clear armed screen.
+tap REC
+wait 40
+expect rec_arm 1
+shot chord-assign.png
+tappad 0 100
+wait 40
+expect rec_arm 0
+expect pad_chord0 3
+pad 0 down 100
+wait 40
+expect active_notes 3
+shot chord-pad.png
+pad 0 up
+wait 40
+expect active_notes 0
+
+# An Easy Chord intro stays up until a strike, rather than timing out.
+tap SEL
+wait 1400
+expect scale_on 1
+expect chord_help 2
+said Hold a root for a major chord
+shot easy-intro.png
+
+# C4 + B3 + A#3 is C Min7: three physical inputs, four sounding chord tones.
+keybed 12 down
+keybed 11 down
+keybed 10 down
+wait 40
+expect chord_help 0
+expect active_notes 4
+expect_out USB 90 3C 64
+expect_out USB 90 3F 64
+expect_out USB 90 43 64
+expect_out USB 90 46 64
+shot easy-playing.png
+keybed 12 up
+keybed 11 up
+keybed 10 up
+wait 40
+expect active_notes 0
+
+# Doubled voicings highlight all sounding tones, including the lower octave.
+spin K3 4
+wait 40
+expect voicing 4
+keybed 12 down
+keybed 11 down
+wait 40
+expect active_notes 8
+shot easy-2x.png
+keybed 12 up
+keybed 11 up
+wait 40
+expect active_notes 0
+spin K3 -4
+wait 40
+expect voicing 0
+
+# Re-entering Easy Chord repeats its introduction. Even an empty pad dismisses it.
+tap SEL
+tap SEL
+wait 40
+expect chord_help 2
+tappad 15 100
+wait 40
+expect chord_help 0
+expect active_notes 0
+
+# REC also gives immediate access to assignment without leaving the intro on top.
+tap SEL
+tap SEL
+wait 40
+expect chord_help 2
+tap REC
+wait 40
+expect chord_help 0
+expect rec_arm 1
+tap REC
+wait 40
+expect rec_arm 0
+
+# Leaving chord mode removes the hint; the regular controller and scale modes still work.
+tap ENV
+wait 40
+expect chord_on 0
+expect chord_help 0
+expect active_notes 0

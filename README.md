@@ -9,8 +9,19 @@ The name is a nod to Erik37 and short for CHord pAD; it was Chordpad37 until 202
 wheels, pedal and buttons go out over USB, Bluetooth and the TRS jack, on the stock V016 map except the faders (CC
 20–27) and knobs K7–K16 (absolute, CC 54–55 and 102–109). CHORD and SCALE modes put Easy Chord on the keys and
 chords on the pads, with pad assignment, LATCH, voicings, auto-strum and an arpeggiator; 8 presets are saved on the
-keyboard. The Pro and MKE-P37 builds have never been installed. Where things stand and what's next:
-[docs/handoff.md](docs/handoff.md).
+keyboard. The Pro and MKE-P37 builds have never been installed.
+
+## Chord mode
+
+Press **CHORD** for a large chord name and a piano keyboard highlighting the sounding notes, including generated
+chord tones and voicings. To assign the active chord to a pad, press **SEQ REC**, then tap the pad.
+
+With CHORD on, press **SCALE** to select **Easy Chord**. A quick diagram explains how a root key and nearby modifier
+keys choose the chord. The first key or pad press switches to the regular chord display.
+
+![Chord and Easy Chord entry and playing screens](docs/chord-ui-review.png)
+
+The preview shows simulator captures enlarged 2×; this UI update has not yet been tested on the keyboard.
 
 ## Before installing
 
