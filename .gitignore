@@ -8,7 +8,6 @@ tools/fm1-emu/
 *.exe
 __pycache__/
 
-# Internal planning and agent handoff notes (kept locally).
-/docs/plan.md
+# Internal agent handoff notes (kept locally); plan.md is shared with the PC.
 /docs/handoff.md
 /docs/review-handoff.md
