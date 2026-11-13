@@ -45,10 +45,12 @@ pad 0 up
 wait 40
 expect active_notes 0
 
-# An Easy Chord intro stays up until a strike, rather than timing out.
-tap SEL
+# CHORD's second press is Easy Chord. Its intro stays up until a strike, rather than timing out.
+tap ENV
 wait 1400
+expect chord_on 1
 expect scale_on 1
+expect page 0
 expect chord_help 2
 said Hold a root for a major chord
 shot easy-intro.png
@@ -71,7 +73,10 @@ keybed 10 up
 wait 40
 expect active_notes 0
 
-# Doubled voicings highlight all sounding tones, including the lower octave.
+# Doubled voicings highlight all sounding tones, including the lower octave. K3 sets voicing on the key page.
+tap SEL
+wait 40
+expect page 3
 spin K3 4
 wait 40
 expect voicing 4
@@ -88,10 +93,26 @@ spin K3 -4
 wait 40
 expect voicing 0
 
-# Re-entering Easy Chord repeats its introduction. Even an empty pad dismisses it.
-tap SEL
+# SCALE in Easy Chord closes its key page again, without leaving Easy Chord.
+expect chord_on 1
+expect scale_on 1
 tap SEL
 wait 40
+expect page 0
+expect scale_on 1
+
+# Re-entering Easy Chord (off, CHORD, EASY CHORD) repeats its introduction. Even an empty pad dismisses it.
+tap ENV
+wait 40
+expect chord_on 0
+tap ENV
+wait 40
+expect chord_on 1
+expect scale_on 0
+expect chord_help 0
+tap ENV
+wait 40
+expect scale_on 1
 expect chord_help 2
 tappad 15 100
 wait 40
@@ -99,8 +120,9 @@ expect chord_help 0
 expect active_notes 0
 
 # REC also gives immediate access to assignment without leaving the intro on top.
-tap SEL
-tap SEL
+tap ENV
+tap ENV
+tap ENV
 wait 40
 expect chord_help 2
 tap REC
@@ -111,9 +133,10 @@ tap REC
 wait 40
 expect rec_arm 0
 
-# Leaving chord mode removes the hint; the regular controller and scale modes still work.
+# CHORD's third press leaves chord modes and removes the hint; the regular controller and scale modes still work.
 tap ENV
 wait 40
 expect chord_on 0
+expect scale_on 0
 expect chord_help 0
 expect active_notes 0

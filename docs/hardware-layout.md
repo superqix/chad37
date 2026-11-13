@@ -119,7 +119,7 @@ Read via `plat_buttons()` (returns bitmask `1u << B_*`) and `plat_smk_buttons()`
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **FX** | FX | `B_FX` | `0` | `14` (`0x85`) | Single LED | Mode / function button |
 | **SCALE** | SEL | `B_SEL` | `1` | `8` (`0x25`) | Single LED | Scale mode |
-| **CHORD** | ENV | `B_ENV` | `2` | `9` (`0x45`) | Single LED | Toggles Easy Chord / Chord Pad mode in Chad37 |
+| **CHORD** | ENV | `B_ENV` | `2` | `9` (`0x45`) | Single LED | Cycles CHORD → EASY CHORD → off in Chad37 |
 | **NOTE REPEAT** | LFO | `B_LFO` | `3` | `7` (`0x65`) | Single LED | Note repeat mode |
 | **PARA** | EDIT | `B_EDIT` | `4` | `13` (`0x55`) | Single LED | Parameter edit |
 | **GLOBE** | GLO | `B_GLO` | `5` | `10` (`0x15`) | Single LED | Global settings |

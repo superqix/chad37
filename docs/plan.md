@@ -19,9 +19,10 @@ bring-up or controller implementation work described below.
 - **CHORD:** entering the mode opens the large chord name and piano keyboard. The first entry in a session shows
   `SEQ REC > TAP A PAD` / `Assign the active chord`. A key or pad strike dismisses the hint. REC opens the existing
   assignment workflow, with an armed-screen prompt and a preview of the chord to store.
-- **Easy Chord:** the existing CHORD + SCALE combination shows a short root/modifier keyboard diagram on entry.
-  The first key or pad strike switches to the same performance layout. REC also dismisses the introduction.
-  K1–K4 keep their existing scale-page roles while `PG_SCALE` is focused; PATCH restores main-page CC control.
+- **Easy Chord:** CHORD's second press (since 2026-11-13; it was CHORD + SCALE) shows a short root/modifier keyboard
+  diagram on entry. The first key or pad strike switches to the same performance layout. REC also dismisses the
+  introduction. In Easy Chord, SCALE opens and closes `PG_SCALE`, where K1–K4 keep their scale-page roles; PATCH
+  restores main-page CC control.
 - The performance keyboard highlights sounding MIDI notes, including generated Easy Chord tones, voicings,
   auto-strum and arp notes. Released notes go dark; the last chord name remains with a `LAST CHORD` label.
 - Existing mode selection, REC-then-pad assignment, MIDI routing and preset storage are retained.
@@ -175,17 +176,21 @@ The first install clears stock settings in `0x9D000–0xAEFFF`, though stock reb
 
 ### M4: Chord mode, Scale mode, Arpeggiator, and Global menu (completed)
 
-#### 1. Mode Matrix (`CHORD` = `B_ENV`, `SCALE` = `B_SEL`)
+#### 1. Modes (`CHORD` = `B_ENV`, `SCALE` = `B_SEL`)
+
+`CHORD` cycles **CHORD → EASY CHORD → off**; from SCALE mode it goes to CHORD. `SCALE` turns SCALE mode on (and the
+chord modes off) and opens the Scale page; in EASY CHORD it only opens and closes the Scale page, where Easy Chord's
+key is set. (Until 2026-11-13, EASY CHORD was `CHORD` + `SCALE` together.)
 
 | Mode State | 37-Key Keybed (`C3..C6`) | 16 RGB Pads (`P0..P15`) |
 |---|---|---|
-| **CHORD off, SCALE off** | Normal chromatic notes | Drums / stock pad notes on channel 10 |
-| **CHORD on, SCALE off** | Normal chromatic notes + **Manual Fingered Chord detection** (recognized chord name & notes shown and latched on screen) | Plays the preset's **16 user-assigned custom chords** on the key channel (empty pads are silent) |
-| **CHORD on, SCALE on** | **Easy Chord** (`easy_chord_resolve`: root key + 2 white / 2 black modifier keys below it), transposed by the `K1` Scale Root offset; played chord shown and latched on screen | Plays the preset's **16 user-assigned custom chords** on the key channel |
-| **CHORD off, SCALE on** | **White keys play notes in key** (sequential scale degrees `1st..7th` per octave starting from the selected root on `C`); **black keys are muted** | Plays **auto-generated diatonic chords in the active key/scale** (Bottom row `P8..P15` = degrees `I..VII` + `I'` triads; Top row `P0..P7` = 7th/extended chords, shaped by `K3` Voicing and `K4` Pad Chord Flavor) |
+| **Off (NOTE)** | Normal chromatic notes | Drums / stock pad notes on channel 10 |
+| **CHORD** (first press) | Normal chromatic notes + **Manual Fingered Chord detection** (recognized chord name & notes shown and latched on screen) | Plays the preset's **16 user-assigned custom chords** on the key channel (empty pads are silent) |
+| **EASY CHORD** (second press) | **Easy Chord** (`easy_chord_resolve`: root key + 2 white / 2 black modifier keys below it), transposed by the `K1` Scale Root offset; played chord shown and latched on screen | Plays the preset's **16 user-assigned custom chords** on the key channel |
+| **SCALE** | **White keys play notes in key** (sequential scale degrees `1st..7th` per octave starting from the selected root on `C`); **black keys are muted** | Plays **auto-generated diatonic chords in the active key/scale** (Bottom row `P8..P15` = degrees `I..VII` + `I'` triads; Top row `P0..P7` = 7th/extended chords, shaped by `K3` Voicing and `K4` Pad Chord Flavor) |
 
 #### 2. Pad Assignment Workflow (`SEQ REC` = `B_REC`)
-- **Latch on play:** In `CHORD` mode (`CHORD` only or `CHORD + SCALE`), playing a chord on the keys displays its detected name and notes on screen and latches it as the last played chord (so keys can either remain held or be released before assigning).
+- **Latch on play:** In `CHORD` or `EASY CHORD`, playing a chord on the keys displays its detected name and notes on screen and latches it as the last played chord (so keys can either remain held or be released before assigning).
 - **Arm & assign:** Press **SEQ REC** (`B_REC`) to arm pad assignment (`SEQ REC` red LED lights and pads blink red). Tap any pad (`P0..P15`) to store the latched/held chord to that pad without sounding a drum note; **SEQ REC automatically turns off** after the assignment.
 - **Stored chord format:** Each pad stores up to **6 raw MIDI notes** plus detected `(root, type)` metadata so both arbitrary manual fingered voicings and Easy Chords (highest root wins if multiple Easy Chords are held) are preserved accurately. Pads store the chord unvoiced (since 2X); the current voicing applies whenever it plays, so it is not applied twice.
 

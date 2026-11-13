@@ -248,7 +248,7 @@ static void chord_ui_performance(const preset_t *pr)
             }
         } else {
             cv_text(12, 224, &FONT_T, "SEQ REC: ASSIGN", CH_UI_MUTED);
-            cv_text(154, 224, &FONT_T, latch_active() ? "LATCH ON" : "SCALE: EASY", CH_UI_MUTED);
+            cv_text(154, 224, &FONT_T, latch_active() ? "LATCH ON" : ui.scale_on ? "SCALE: KEY" : "CHORD: EASY", CH_UI_MUTED);
         }
     }
 }

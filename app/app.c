@@ -3,11 +3,12 @@
 /* Chad37 controller and chord/scale/arpeggiator layer (M3 + M4):
  *   - 37-key velocity keybed, 16 velocity + pressure RGB pads, 2x8 endless encoders (KNOB BANK),
  *     2x4 faders (FADER BANK), pitch & mod wheels, sustain/expression pedal jack, and panel buttons.
- *   - 4-state Mode Matrix on CHORD (B_ENV) and SCALE (B_SEL):
- *       1. CHORD off, SCALE off: chromatic keys + stock/drum pads.
- *       2. CHORD on,  SCALE off: chromatic keys with manual chord detection/latch + 16 custom chord pads.
- *       3. CHORD on,  SCALE on:  Easy Chord on keys (transposed by Scale Root, shaped by Voicing) + 16 custom chord pads.
- *       4. CHORD off, SCALE on:  white keys play notes in key (black keys muted) + 16 diatonic scale chord pads.
+ *   - 4 modes (ui.chord_on, ui.scale_on). CHORD (B_ENV) cycles CHORD -> EASY CHORD -> off; SCALE (B_SEL) turns
+ *     SCALE on (and CHORD off), or in EASY CHORD opens and closes the Scale page, where its key is set:
+ *       1. NOTE  (0, 0): chromatic keys + stock/drum pads.
+ *       2. CHORD (1, 0): chromatic keys with manual chord detection/latch + 16 custom chord pads.
+ *       3. EASY  (1, 1): Easy Chord on keys (transposed by Scale Root, shaped by Voicing) + 16 custom chord pads.
+ *       4. SCALE (0, 1): white keys play notes in key (black keys muted) + 16 diatonic scale chord pads.
  *   - SEQ REC (B_REC) arms pad assignment in CHORD mode (blinking red pads) and disarms automatically on store.
  *   - Arpeggiator (B_ARP) with Up, Down, Up/Down, Random, and Full-Chord Progression modes, internal 1 kHz clock
  *     and automatic external MIDI Clock (0xF8) sync, plus non-blocking Auto-Strum (0..120 ms, Up/Down/Alt).
@@ -745,7 +746,7 @@ static void pads_input(void)
                 cs_chord_t c_play;
                 char cname[16];
                 uint8_t ch = pr->key_ch & 15u;
-                if (ui.chord_on) {       /* Custom user-assigned chord pads (CHORD only, or CHORD + SCALE) */
+                if (ui.chord_on) {       /* Custom user-assigned chord pads (CHORD or EASY CHORD) */
                     cs_pad_chord_load(&c_play, &pr->chords[p]);
                     if (c_play.count == 0) {
                         say_control("EMPTY PAD", (int32_t)p + 1);
@@ -1238,35 +1239,49 @@ static void buttons_input(void)
         say_control("OCTAVE", st.octave);
     }
 
-    /* CHORD (B_ENV): toggles CHORD mode */
+    /* CHORD (B_ENV): cycles CHORD -> EASY CHORD -> off; from SCALE mode, CHORD */
     if (down & (1u << B_ENV)) {
         all_notes_off();
-        ui.chord_on ^= 1u;
-        if (!ui.chord_on)
+        if (!ui.chord_on) {
+            ui.chord_on = 1;
+            ui.scale_on = 0;
+        } else if (!ui.scale_on) {
+            ui.scale_on = 1;
+        } else {
+            ui.chord_on = 0;
+            ui.scale_on = 0;
             ui.rec_arm = 0;
+        }
         if (ui.chord_on) {
             ui.page = PG_MAIN;
             ui.chord_help = ui.scale_on ? CHORD_HELP_EASY :
                 ui.chord_help_seen ? CHORD_HELP_NONE : CHORD_HELP_ASSIGN;
             ui.chord_help_seen = 1;
         } else {
+            if (ui.page == PG_SCALE)
+                ui.page = PG_MAIN;                                   /* the Scale page belongs to SCALE and EASY */
             ui.chord_help = CHORD_HELP_NONE;
         }
         app_say("CHORD", ui.chord_on ? (ui.scale_on ? "EASY CHORD" : "ON") : "OFF");
         say_chord_help();
+        ui.redraw = 1;
     }
 
-    /* SCALE (B_SEL): turns Scale on and opens PG_SCALE; if already on PG_SCALE, turns Scale off */
+    /* SCALE (B_SEL): in EASY CHORD, opens and closes the Scale page (its key). Otherwise turns SCALE mode on (CHORD
+     * off) and opens PG_SCALE; on PG_SCALE already, turns it off */
     if (down & (1u << B_SEL)) {
-        if (!ui.scale_on) {
+        if (ui.chord_on && ui.scale_on) {
+            ui.page = ui.page == PG_SCALE ? PG_MAIN : PG_SCALE;
+            if (ui.page == PG_SCALE)
+                app_say("EASY CHORD KEY", CS_ROOT_NAMES[st.scale_root]);
+        } else if (!ui.scale_on) {
             all_notes_off();
+            ui.chord_on = 0;
+            ui.rec_arm = 0;
             ui.scale_on = 1;
             ui.page = PG_SCALE;
-            if (ui.chord_on) {
-                ui.chord_help = CHORD_HELP_EASY;
-            }
+            ui.chord_help = CHORD_HELP_NONE;
             app_say("SCALE ON", CS_SCALE_NAMES[st.scale_type]);
-            say_chord_help();
         } else if (ui.page != PG_SCALE) {
             ui.page = PG_SCALE;
             app_say("SCALE PAGE", CS_SCALE_NAMES[st.scale_type]);
@@ -1439,7 +1454,7 @@ static void update_leds(uint32_t now_ms)
         b |= 1u << B_OCTUP;
     if (ui.chord_on)
         b |= 1u << B_ENV;
-    if (ui.scale_on)
+    if (ui.scale_on && !ui.chord_on)                 /* SCALE mode only: in EASY CHORD the screen says so */
         b |= 1u << B_SEL;
     if (ui.arp_on)
         b |= 1u << B_ARP;
@@ -1626,7 +1641,7 @@ static void draw_scale_body(void)
     uint32_t i;
 
     cv_begin(240, 144, C_BLACK);
-    cv_text(4, 2, &FONT_B, ui.chord_on ? "SCALE + EASY CHORD (K1-K4)" : "SCALE MODE (K1-K4)", C_WHITE);
+    cv_text(4, 2, &FONT_B, ui.chord_on ? "EASY CHORD KEY (K1-K4)" : "SCALE MODE (K1-K4)", C_WHITE);
     choice_cell(4, 24, "K1 KEY", CS_ROOT_NAMES[st.scale_root]);
     choice_cell(62, 24, "K2 SCALE", CS_SCALE_NAMES[st.scale_type]);
     choice_cell(120, 24, "K3 VOICE", CS_VOICING_NAMES[st.voicing]);
@@ -1645,7 +1660,8 @@ static void draw_scale_body(void)
             x = cv_text(x, 106, &FONT_XS, nn, C_AMB) + 8;
         }
     }
-    cv_text(4, 126, &FONT_T, "PATCH: MAIN CC VIEW   SCALE: TURN OFF", C_AMB);
+    cv_text(4, 126, &FONT_T, ui.chord_on ? "PATCH / SCALE: MAIN VIEW   CHORD: OFF" : "PATCH: MAIN CC VIEW   SCALE: TURN OFF",
+            C_AMB);
     cv_blit(0, 36);
 }
 

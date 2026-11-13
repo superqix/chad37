@@ -16,8 +16,10 @@ keyboard. The Pro and MKE-P37 builds have never been installed.
 Press **CHORD** for a large chord name and a piano keyboard highlighting the sounding notes, including generated
 chord tones and voicings. To assign the active chord to a pad, press **SEQ REC**, then tap the pad.
 
-With CHORD on, press **SCALE** to select **Easy Chord**. A quick diagram explains how a root key and nearby modifier
-keys choose the chord. The first key or pad press switches to the regular chord display.
+**CHORD** works as a three-way switch: the first press is CHORD, the second **Easy Chord**, the third turns chord
+modes off. In Easy Chord, **SCALE** opens and closes the page that sets its key. On entering Easy Chord, a quick
+diagram explains how a root key and nearby modifier keys choose the chord. The first key or pad press switches to the
+regular chord display.
 
 ![Chord and Easy Chord entry and playing screens](docs/chord-ui-review.png)
 

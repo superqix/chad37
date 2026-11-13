@@ -121,8 +121,14 @@ expect active_notes 0
 out
 
 # ---------------------------------------------------------------------------
-# 2. CHORD on, SCALE on: Easy Chord + Scale Root transposition + morphing
+# 2. EASY CHORD (CHORD's second press): Easy Chord + Scale Root transposition + morphing
 # ---------------------------------------------------------------------------
+tap ENV
+wait 30
+expect chord_on 1
+expect scale_on 1
+expect page 0
+# SCALE in EASY CHORD opens the Scale page (its key) and stays in EASY CHORD
 tap SEL
 wait 30
 expect chord_on 1
@@ -206,19 +212,36 @@ wait 30
 expect voicing 0
 out
 
-# PATCH (HOME) returns to PG_MAIN while keeping SCALE active
+# PATCH (HOME) returns to PG_MAIN while keeping EASY CHORD; SCALE opens and closes the Scale page without leaving it
 tap HOME
 wait 30
 expect page 0
 expect scale_on 1
+tap SEL
+wait 30
+expect page 3
+tap SEL
+wait 30
+expect page 0
+expect chord_on 1
+expect scale_on 1
 
 # ---------------------------------------------------------------------------
-# 3. CHORD off, SCALE on: White keys in scale, black keys muted, diatonic pads
+# 3. SCALE: White keys in scale, black keys muted, diatonic pads
 # ---------------------------------------------------------------------------
+# CHORD's third press turns chord modes off; SCALE then turns SCALE mode on and opens its page
 tap ENV
 wait 30
 expect chord_on 0
+expect scale_on 0
+tap SEL
+wait 30
+expect chord_on 0
 expect scale_on 1
+expect page 3
+tap HOME
+wait 30
+expect page 0
 out
 
 # White key 0 (C3) plays D3 (50 = 0x32) in D Major; black key 1 (C#3) is muted
@@ -303,16 +326,22 @@ wait 30
 # ---------------------------------------------------------------------------
 # 5. Arpeggiator (internal clock & external MIDI clock sync)
 # ---------------------------------------------------------------------------
-# Switch to CHORD on, SCALE off (first SEL focuses PG_SCALE, second SEL turns SCALE off)
+# CHORD from SCALE mode goes straight to CHORD (SCALE off)
 tap ENV
-wait 30
-tap SEL
-wait 30
-expect page 3
-tap SEL
 wait 30
 expect scale_on 0
 expect chord_on 1
+# SCALE from CHORD turns SCALE mode on (CHORD off); CHORD on the Scale page goes back to CHORD and the main view
+tap SEL
+wait 30
+expect chord_on 0
+expect scale_on 1
+expect page 3
+tap ENV
+wait 30
+expect chord_on 1
+expect scale_on 0
+expect page 0
 
 tap ARP
 wait 30
