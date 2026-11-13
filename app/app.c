@@ -4,10 +4,10 @@
  *   - 37-key velocity keybed, 16 velocity + pressure RGB pads, 2x8 endless encoders (KNOB BANK),
  *     2x4 faders (FADER BANK), pitch & mod wheels, sustain/expression pedal jack, and panel buttons.
  *   - 4 modes (ui.chord_on, ui.scale_on). CHORD (B_ENV) cycles CHORD -> EASY CHORD -> off; SCALE (B_SEL) turns
- *     SCALE on (and CHORD off), or in EASY CHORD opens and closes the Scale page, where its key is set:
+ *     SCALE on (and CHORD off), or in EASY CHORD opens and closes the Scale page, for its voicing (K3):
  *       1. NOTE  (0, 0): chromatic keys + stock/drum pads.
  *       2. CHORD (1, 0): chromatic keys with manual chord detection/latch + 16 custom chord pads.
- *       3. EASY  (1, 1): Easy Chord on keys (transposed by Scale Root, shaped by Voicing) + 16 custom chord pads.
+ *       3. EASY  (1, 1): Easy Chord on keys (untransposed, shaped by Voicing) + 16 custom chord pads.
  *       4. SCALE (0, 1): white keys play notes in key (black keys muted) + 16 diatonic scale chord pads.
  *   - SEQ REC (B_REC) arms pad assignment in CHORD mode (blinking red pads) and disarms automatically on store.
  *   - Arpeggiator (B_ARP) with Up, Down, Up/Down, Random, and Full-Chord Progression modes, internal 1 kHz clock
@@ -562,7 +562,8 @@ static void keys_input(void)
             return;
         ui.keys_on = now;
         build_raw_key_mask(now, raw_held);
-        if (cs_resolve_easy_chord(raw_held, st.scale_root, VOICING_ROOT, &ec, cname)) {
+        /* Untransposed: the key (st.scale_root) is SCALE mode's, so C plays C */
+        if (cs_resolve_easy_chord(raw_held, 0, VOICING_ROOT, &ec, cname)) {
             ui.latched_chord = ec;                                   /* unvoiced; played with the voicing */
             ec.count = cs_apply_voicing(ec.notes, ec.count, st.voicing);
             copy_str(ui.chord_name, sizeof ui.chord_name, cname);
@@ -1267,13 +1268,13 @@ static void buttons_input(void)
         ui.redraw = 1;
     }
 
-    /* SCALE (B_SEL): in EASY CHORD, opens and closes the Scale page (its key). Otherwise turns SCALE mode on (CHORD
+    /* SCALE (B_SEL): in EASY CHORD, opens and closes the Scale page (its voicing). Otherwise turns SCALE mode on (CHORD
      * off) and opens PG_SCALE; on PG_SCALE already, turns it off */
     if (down & (1u << B_SEL)) {
         if (ui.chord_on && ui.scale_on) {
             ui.page = ui.page == PG_SCALE ? PG_MAIN : PG_SCALE;
             if (ui.page == PG_SCALE)
-                app_say("EASY CHORD KEY", CS_ROOT_NAMES[st.scale_root]);
+                app_say("VOICING", CS_VOICING_NAMES[st.voicing]);
         } else if (!ui.scale_on) {
             all_notes_off();
             ui.chord_on = 0;

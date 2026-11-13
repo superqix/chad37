@@ -121,54 +121,54 @@ expect active_notes 0
 out
 
 # ---------------------------------------------------------------------------
-# 2. EASY CHORD (CHORD's second press): Easy Chord + Scale Root transposition + morphing
+# 2. EASY CHORD (CHORD's second press): Easy Chord, untransposed by the key, + morphing
 # ---------------------------------------------------------------------------
 tap ENV
 wait 30
 expect chord_on 1
 expect scale_on 1
 expect page 0
-# SCALE in EASY CHORD opens the Scale page (its key) and stays in EASY CHORD
+# SCALE in EASY CHORD opens the Scale page (its voicing) and stays in EASY CHORD
 tap SEL
 wait 30
 expect chord_on 1
 expect scale_on 1
 expect page 3
-# Transpose scale root from C (0) to D (2) via K1
+# K1 sets SCALE mode's key to D (2); Easy Chord ignores it
 spin K1 2
 wait 30
 expect scale_root 2
 shot scale_page.png
 out
 
-# Press C4 (key 12) + B3 (key 11): Easy Chord C Maj7 transposed +2 -> D Maj7 (62=0x3E, 66=0x42, 69=0x45, 73=0x49)
+# Press C4 (key 12) + B3 (key 11): Easy Chord C Maj7 with the key at D, still C (60=0x3C, 64=0x40, 67=0x43, 71=0x47)
 keybed 12 down
 keybed 11 down
 wait 30
 expect latched_count 4
-expect_out USB 90 3E 64
-expect_out USB 90 42 64
-expect_out USB 90 45 64
-expect_out USB 90 49 64
+expect_out USB 90 3C 64
+expect_out USB 90 40 64
+expect_out USB 90 43 64
+expect_out USB 90 47 64
 out
 
-# Lift B3 (key 11) while holding C4: morphs smoothly to D Maj triad (only 0x49 turns off)
+# Lift B3 (key 11) while holding C4: morphs smoothly to C Maj triad (only 0x47 turns off)
 keybed 11 up
 wait 30
 expect latched_count 3
-expect_out USB 80 49 00
+expect_out USB 80 47 00
 expect active_notes 3
 out
 
 keybed 12 up
 wait 30
-expect_out USB 80 3E 00
-expect_out USB 80 42 00
-expect_out USB 80 45 00
+expect_out USB 80 3C 00
+expect_out USB 80 40 00
+expect_out USB 80 43 00
 expect active_notes 0
 out
 
-# Assign the latched D Major triad to Pad 1
+# Assign the latched C Major triad to Pad 1
 tap REC
 wait 30
 expect rec_arm 1
@@ -178,31 +178,31 @@ expect rec_arm 0
 expect pad_chord1 3
 out
 
-# K3 VOICING to 2X (4): every chord plays with the same chord an octave below. The pad keeps the D triad unvoiced
-# (3 notes) and plays D3 F#3 A3 (0x32 0x36 0x39) with D4 F#4 A4
+# K3 VOICING to 2X (4): every chord plays with the same chord an octave below. The pad keeps the C triad unvoiced
+# (3 notes) and plays C3 E3 G3 (0x30 0x34 0x37) with C4 E4 G4
 spin K3 4
 wait 30
 expect voicing 4
 tappad 1 100
 wait 60
 expect pad_chord1 3
-expect_out USB 90 32 64
-expect_out USB 90 36 64
-expect_out USB 90 39 64
-expect_out USB 90 3E 64
-expect_out USB 90 42 64
-expect_out USB 90 45 64
+expect_out USB 90 30 64
+expect_out USB 90 34 64
+expect_out USB 90 37 64
+expect_out USB 90 3C 64
+expect_out USB 90 40 64
+expect_out USB 90 43 64
 expect active_notes 0
 out
-# Easy Chord on the keys: D Maj7 doubled is 8 notes; the latched chord (what SEQ REC would store) stays 4
+# Easy Chord on the keys: C Maj7 doubled is 8 notes; the latched chord (what SEQ REC would store) stays 4
 keybed 12 down
 keybed 11 down
 wait 30
 expect latched_count 4
 expect active_notes 8
-expect_out USB 90 32 64
-expect_out USB 90 3D 64
-expect_out USB 90 49 64
+expect_out USB 90 30 64
+expect_out USB 90 3B 64
+expect_out USB 90 47 64
 keybed 12 up
 keybed 11 up
 wait 30

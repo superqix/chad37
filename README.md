@@ -17,9 +17,9 @@ Press **CHORD** for a large chord name and a piano keyboard highlighting the sou
 chord tones and voicings. To assign the active chord to a pad, press **SEQ REC**, then tap the pad.
 
 **CHORD** works as a three-way switch: the first press is CHORD, the second **Easy Chord**, the third turns chord
-modes off. In Easy Chord, **SCALE** opens and closes the page that sets its key. On entering Easy Chord, a quick
-diagram explains how a root key and nearby modifier keys choose the chord. The first key or pad press switches to the
-regular chord display.
+modes off. Easy Chord plays the chord you press (C is C major, whatever the key); in Easy Chord, **SCALE** opens and
+closes the page that sets its voicing (K3). On entering Easy Chord, a quick diagram explains how a root key and nearby
+modifier keys choose the chord. The first key or pad press switches to the regular chord display.
 
 ![Chord and Easy Chord entry and playing screens](docs/chord-ui-review.png)
 

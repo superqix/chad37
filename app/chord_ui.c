@@ -236,19 +236,13 @@ static void chord_ui_performance(const preset_t *pr)
             copy_str(message + n, sizeof message - (uint32_t)n, ui.msg[1]);
             chord_ui_center(222, &FONT_T, message, CH_UI_ACCENT);
         } else if (ui.scale_on && ui.page == PG_SCALE) {
-            /* Scale-page knob roles stay active, just as before the performance layout. */
-            const char *values[4] = {CS_ROOT_NAMES[st.scale_root], CS_SCALE_NAMES[st.scale_type],
-                                     CS_VOICING_NAMES[st.voicing], CS_FLAVOR_NAMES[st.pad_flavor]};
-            for (n = 0; n < 4; n++) {
-                char label[20] = "K";
-                int_text(n + 1, label + 1);
-                copy_str(label + 2, sizeof label - 2, " ");
-                copy_str(label + 3, sizeof label - 3, values[n]);
-                cv_text(12 + n * 55, 224, &FONT_T, label, CH_UI_MUTED);
-            }
+            /* Scale-page knob roles stay active. Easy Chord ignores the key, so only the voicing is shown. */
+            char label[32] = "K3 VOICE  ";
+            copy_str(label + 10, sizeof label - 10, CS_VOICING_NAMES[st.voicing]);
+            cv_text(12, 224, &FONT_T, label, CH_UI_MUTED);
         } else {
             cv_text(12, 224, &FONT_T, "SEQ REC: ASSIGN", CH_UI_MUTED);
-            cv_text(154, 224, &FONT_T, latch_active() ? "LATCH ON" : ui.scale_on ? "SCALE: KEY" : "CHORD: EASY", CH_UI_MUTED);
+            cv_text(154, 224, &FONT_T, latch_active() ? "LATCH ON" : ui.scale_on ? "SCALE: VOICE" : "CHORD: EASY", CH_UI_MUTED);
         }
     }
 }
