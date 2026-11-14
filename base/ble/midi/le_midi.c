@@ -100,7 +100,9 @@ static OS_MUTEX mutex;
 
 /* connection parameters: ask for a short interval (MIDI latency and jitter): Apple's 11.25-15 ms for
  * MIDI first, then the SDK demo's */
-static const uint8_t connection_update_enable = 1;
+/* Off since 2026-11-14: an iPad (which picks 7.5 ms itself) accepted 26.25 ms from the table below and the link then
+ * timed out (0x08) every time; left alone at 7.5 ms it stays up. The table stays for a later, narrower request */
+static const uint8_t connection_update_enable = 0;
 static uint8_t connection_update_cnt;
 static const struct conn_update_param_t connection_param_table[] = {
     {9, 21, 0, 400},                /* 11.25..26.25 ms (1.25 ms units; Apple: max >= min + 15 ms), 4 s timeout */
