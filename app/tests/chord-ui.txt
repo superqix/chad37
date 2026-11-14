@@ -131,6 +131,10 @@ expect chord_help 0
 expect rec_arm 1
 tap REC
 wait 40
+expect rec_arm 2
+shot chord-erase.png
+tap REC
+wait 40
 expect rec_arm 0
 
 # CHORD's third press leaves chord modes and removes the hint; the regular controller and scale modes still work.

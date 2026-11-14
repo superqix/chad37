@@ -1,0 +1,278 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
+# 16 chord-pad banks shared by the presets: < and > pick one in CHORD and EASY CHORD, < + > asks to delete it and
+# < + > again deletes. Holding PATCH lights pads 1-8 by preset: current white, in use red, unused green.
+wait 1200
+ble connect
+listen
+wait 30
+
+# The first start with banks: presets 1-8's pad chords become banks 1-8, the active preset's bank active
+expect banks_from_presets 1
+expect bank 1
+expect bank_used 0
+
+# CHORD: assign C Maj to pad 1 of bank 1
+tap ENV
+wait 30
+expect chord_on 1
+keybed 12 down
+keybed 16 down
+keybed 19 down
+wait 30
+keybed 12 up
+keybed 16 up
+keybed 19 up
+wait 30
+tap REC
+wait 30
+tappad 0 100
+wait 60
+expect pad_chord0 3
+expect bank_used 1
+out
+
+# > : bank 2, empty; the arrow sends no Program Change in chord modes
+tap RIGHT
+wait 30
+expect bank 2
+expect bank_used 0
+expect pad_chord0 0
+expect program 0
+said BANK
+tappad 0 100
+wait 60
+expect active_notes 0
+
+# Assign D Min (D4 F4 A4: keys 14 17 21) to pad 2 of bank 2
+keybed 14 down
+keybed 17 down
+keybed 21 down
+wait 30
+keybed 14 up
+keybed 17 up
+keybed 21 up
+wait 30
+tap REC
+wait 30
+tappad 1 100
+wait 60
+expect pad_chord1 3
+expect bank_used 1
+out
+
+# < : bank 1 again, pad 1 still plays C Maj on the key channel
+tap LEFT
+wait 30
+expect bank 1
+expect pad_chord0 3
+expect pad_chord1 0
+tappad 0 100
+wait 60
+expect_out USB 90 3C 64
+expect active_notes 0
+out
+
+# Ends stop: < at bank 1 stays on 1; > runs up to 16 and stays
+tap LEFT
+wait 30
+expect bank 1
+tap RIGHT
+tap RIGHT
+wait 30
+expect bank 3
+out
+
+# Easy Chord uses the same banks
+tap ENV
+wait 30
+expect scale_on 1
+tap LEFT
+wait 30
+expect bank 2
+expect pad_chord1 3
+tappad 1 100
+wait 60
+expect_out USB 90 3E 64
+expect active_notes 0
+out
+
+# < + > together asks; an arrow alone cancels, keeping the bank and not stepping
+press LEFT
+wait 10
+press RIGHT
+wait 30
+expect bank_del_arm 1
+said DELETE BANK?
+release LEFT
+release RIGHT
+wait 30
+expect bank 2
+expect bank_del_arm 1
+tap RIGHT
+wait 30
+expect bank_del_arm 0
+expect bank 2
+expect pad_chord1 3
+said CANCELLED
+
+# < + > twice deletes bank 2's chords
+press RIGHT
+press LEFT
+wait 30
+release RIGHT
+release LEFT
+wait 30
+expect bank_del_arm 1
+press LEFT
+press RIGHT
+wait 30
+expect bank_del_arm 0
+expect bank_used 0
+expect pad_chord1 0
+said BANK DELETED
+release LEFT
+release RIGHT
+wait 30
+expect bank 2
+tappad 1 100
+wait 60
+expect active_notes 0
+
+# Bank 1 is untouched
+tap LEFT
+wait 30
+expect bank 1
+expect pad_chord0 3
+
+# An unanswered ask lapses after 5 s
+press LEFT
+press RIGHT
+wait 30
+release LEFT
+release RIGHT
+wait 30
+expect bank_del_arm 1
+wait 5200
+expect bank_del_arm 0
+expect pad_chord0 3
+
+# Banks survive a reboot, with the active bank
+tap RIGHT
+wait 30
+expect bank 2
+tap SAVE
+wait 30
+reboot
+wait 1200
+expect bank 2
+tap ENV
+wait 30
+tap LEFT
+wait 30
+expect bank 1
+expect pad_chord0 3
+
+# Out of chord modes the arrows send Program Change again
+tap ENV
+wait 30
+tap ENV
+wait 30
+expect chord_on 0
+tap RIGHT
+wait 30
+expect program 1
+expect bank 1
+
+# PATCH held: pad 1 (current) white, pad 2 (drums) red, pads 3-8 green, 9-16 dark
+press HOME
+wait 30
+expect pad0 16777215
+expect pad1 14424088
+expect pad2 1613864
+expect pad7 1613864
+expect pad8 0
+release HOME
+wait 30
+
+# Selecting a preset marks it used: preset 3 turns red and stays red after going back to preset 1
+press HOME
+wait 10
+tappad 2 100
+release HOME
+wait 30
+expect preset 3
+press HOME
+wait 10
+tappad 0 100
+wait 30
+expect pad2 14424088
+expect pad0 16777215
+expect pad3 1613864
+release HOME
+wait 30
+expect preset 1
+
+# ...and after a reboot
+tap SAVE
+wait 30
+reboot
+wait 1200
+press HOME
+wait 30
+expect pad2 14424088
+expect pad3 1613864
+release HOME
+wait 30
+
+# SEQ REC is a three-way switch in chord modes: ASSIGN, ERASE, off. ERASE clears each tapped pad and stays on
+tap ENV
+wait 30
+expect chord_on 1
+expect bank 1
+expect pad_chord0 3
+keybed 14 down
+keybed 17 down
+keybed 21 down
+wait 30
+keybed 14 up
+keybed 17 up
+keybed 21 up
+wait 30
+tap REC
+wait 30
+expect rec_arm 1
+tappad 1 100
+wait 60
+expect pad_chord1 3
+expect bank_used 2
+out
+tap REC
+wait 30
+expect rec_arm 1
+tap REC
+wait 30
+expect rec_arm 2
+said PAD ERASE
+tappad 0 100
+wait 60
+expect pad_chord0 0
+expect pad_chord1 3
+expect rec_arm 2
+expect active_notes 0
+said ERASED
+tappad 5 100
+wait 60
+said EMPTY
+expect rec_arm 2
+tap REC
+wait 30
+expect rec_arm 0
+said OFF
+tappad 0 100
+wait 60
+expect active_notes 0
+tappad 1 100
+wait 60
+expect_out USB 90 3E 64
+expect active_notes 0

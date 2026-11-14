@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
+# GLOBAL K6 CHORD PAD CH: chord pads on their own MIDI channel (e.g. Surge XT's Channel Split, Scene B), keys on the
+# preset's key channel. A store saved before the setting existed loads with its presets intact.
+wait 1200
+ble connect
+listen
+wait 30
+
+# A store saved before chord_pad_ch (shorter) reads back whole, chord pads following the keys
+expect store_pre_chord_ch 1
+expect chord_pad_ch 0
+
+# CHORD with the default: a pad chord plays on the key channel (ch 1)
+tap ENV
+wait 30
+expect chord_on 1
+keybed 12 down
+keybed 16 down
+keybed 19 down
+wait 30
+keybed 12 up
+keybed 16 up
+keybed 19 up
+wait 30
+tap REC
+wait 30
+tappad 0 100
+wait 60
+expect pad_chord0 3
+out
+tappad 0 100
+wait 60
+expect_out USB 90 3C 64
+expect_out USB 90 40 64
+expect_out USB 90 43 64
+expect_out USB 80 3C 00
+out
+
+# GLOBE opens the GLOBAL page; K6 (SELECT) sets CHORD PAD CH to 2. It saves with the rest.
+tap GLO
+wait 30
+expect page 2
+spin SELECT 2
+wait 30
+expect chord_pad_ch 2
+said CHORD PAD CH
+spin SELECT 20
+wait 30
+expect chord_pad_ch 16
+spin SELECT -14
+wait 30
+expect chord_pad_ch 2
+tap HOME
+wait 30
+expect page 0
+out
+
+# Chord pads now play on ch 2 (0x91 / 0x81) while the keys stay on ch 1
+tappad 0 100
+wait 60
+expect_out USB 91 3C 64
+expect_out USB 91 40 64
+expect_out USB 91 43 64
+expect_out USB 81 3C 00
+expect_out TRS 91 3C 64
+expect active_notes 0
+out
+keybed 12 down
+wait 30
+expect_out USB 90 3C 64
+keybed 12 up
+wait 30
+expect_out USB 80 3C 00
+out
+
+# Easy Chord: the keys' chord on ch 1, the pads' on ch 2
+tap ENV
+wait 30
+expect scale_on 1
+keybed 12 down
+wait 30
+expect_out USB 90 3C 64
+expect_out USB 90 40 64
+expect_out USB 90 43 64
+keybed 12 up
+wait 30
+out
+tappad 0 100
+wait 60
+expect_out USB 91 3C 64
+expect active_notes 0
+out
+
+# SCALE mode's diatonic pads use the chord pad channel too (CHORD's third press, then SCALE)
+tap ENV
+wait 30
+expect chord_on 0
+tap SEL
+wait 30
+expect scale_on 1
+expect chord_on 0
+tap HOME
+wait 30
+tappad 8 100
+wait 60
+expect_out USB 91 30 64
+expect active_notes 0
+out
+
+# Held chord pad with the arp: arp notes on the chord pad channel, released cleanly
+tap ARP
+wait 30
+expect arp_on 1
+pad 8 down 100
+wait 400
+expect_out USB 91 30 64
+pad 8 up
+wait 400
+expect active_notes 0
+tap ARP
+wait 30
+expect arp_on 0
+out
+
+# Back to KEYS (0): pads follow the key channel again
+tap GLO
+wait 30
+spin SELECT -2
+wait 30
+expect chord_pad_ch 0
+said KEYS
+tap HOME
+wait 30
+tappad 8 100
+wait 60
+expect_out USB 90 30 64
+expect active_notes 0

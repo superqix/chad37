@@ -25,12 +25,12 @@ void app_splash(void);
 #define APP_GAIN(m) app_gain(m)
 uint32_t app_gain(uint32_t master);
 
-/* the store: 8 presets + global header in OBJ_PRESETS, the panel calibration (the platform's) and Bluetooth's
- * address and pairing. The SMK-37 build puts the objects in its own window by number, so the numbers stay; it holds
- * 9 objects at most */
-enum { OBJ_PRESETS, OBJ_PANEL, OBJ_BLE, OBJ_NOBJ };
+/* the store: 8 presets + global header in OBJ_PRESETS, the panel calibration (the platform's), Bluetooth's
+ * address and pairing, and the 16 shared chord-pad banks (OBJ_CHORDS, since 2026-11-14). The SMK-37 build puts the
+ * objects in its own window by number, so the numbers stay; it holds 9 objects at most */
+enum { OBJ_PRESETS, OBJ_PANEL, OBJ_BLE, OBJ_CHORDS, OBJ_NOBJ };
 #define OBJ_SETTINGS OBJ_PRESETS
-#define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}
+#define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u, 0xDA000u}
 
 /* the contract: the platform calls these */
 void app_init(void);

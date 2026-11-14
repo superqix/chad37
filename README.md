@@ -14,7 +14,13 @@ keyboard. The Pro and MKE-P37 builds have never been installed.
 ## Chord mode
 
 Press **CHORD** for a large chord name and a piano keyboard highlighting the sounding notes, including generated
-chord tones and voicings. To assign the active chord to a pad, press **SEQ REC**, then tap the pad.
+chord tones and voicings. To assign the active chord to a pad, press **SEQ REC**, then tap the pad. Press **SEQ REC**
+a second time for ERASE: pads with a chord blink orange, and each pad you tap is cleared. A third press turns it off.
+
+The pads' chords come in **16 banks**, shared by all presets. In CHORD and Easy Chord, **<** and **>** pick the bank.
+Press **<** and **>** together to delete the bank's chords; the screen asks first, and pressing both again confirms
+(one arrow keeps it). Hold **PATCH** to see pads 1–8 lit by preset: white for the current one, red for presets 1 and 2
+and any you've selected, green for one never used.
 
 **CHORD** works as a three-way switch: the first press is CHORD, the second **Easy Chord**, the third turns chord
 modes off. Easy Chord plays the chord you press (C is C major, whatever the key); in Easy Chord, **SCALE** opens and

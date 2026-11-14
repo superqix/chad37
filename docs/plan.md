@@ -192,6 +192,9 @@ voicing (`K3`). (Until 2026-11-13, EASY CHORD was `CHORD` + `SCALE` together, an
 #### 2. Pad Assignment Workflow (`SEQ REC` = `B_REC`)
 - **Latch on play:** In `CHORD` or `EASY CHORD`, playing a chord on the keys displays its detected name and notes on screen and latches it as the last played chord (so keys can either remain held or be released before assigning).
 - **Arm & assign:** Press **SEQ REC** (`B_REC`) to arm pad assignment (`SEQ REC` red LED lights and pads blink red). Tap any pad (`P0..P15`) to store the latched/held chord to that pad without sounding a drum note; **SEQ REC automatically turns off** after the assignment.
+- **Erase pads (since 2026-11-14):** `SEQ REC` cycles **ASSIGN → ERASE → off**. In ERASE, pads with a chord blink
+  orange; each tapped pad's chord is cleared without sounding, and ERASE stays on until `SEQ REC` is pressed again or
+  chord modes are left. `<` + `>` (twice) clears the whole bank.
 - **Stored chord format:** Each pad stores up to **6 raw MIDI notes** plus detected `(root, type)` metadata so both arbitrary manual fingered voicings and Easy Chords (highest root wins if multiple Easy Chords are held) are preserved accurately. Pads store the chord unvoiced (since 2X); the current voicing applies whenever it plays, so it is not applied twice.
 
 - **Latch (`NOTE REPEAT` = `B_LFO`):** while the pads play chords (`CHORD` on, or `SCALE` alone), `NOTE REPEAT` toggles LATCH (its light, and `LAT` in the header). A tapped chord pad keeps sounding after it is let go; another pad switches to its chord (an empty pad just stops it); the latched pad again stops it; LATCH off, a mode or preset change, or `FX` panic lets it go. With `ARP` on, the arpeggiator keeps running on the latched chord.
@@ -215,11 +218,24 @@ voicing (`K3`). (Until 2026-11-13, EASY CHORD was `CHORD` + `SCALE` together, an
   - **Strum Chords (Auto-Strum):** Staggered note-on delay (`0..120 ms` per chord tone, `Up / Down / Alt`) when triggering a chord pad or Easy Chord, queued non-blockingly via `app_tick`.
   - **Chord Voicing:** `Root, 1st Inversion, 2nd Inversion, Spread, 2X` (shared with `K3` on the Scale page).
   - **ARP Mode & Settings:** Pattern, Rate/Division, Gate, and Octave range.
+  - **Chord Pad Channel** (`K6`, since 2026-11-14): `KEYS` (the preset's key channel, the default) or `1..16`. Chord
+    pads in CHORD, EASY CHORD and SCALE, their pressure, and the arp while only pads are held use it; keys stay on
+    the key channel. For Surge XT's Channel Split: keys on 1, chord pads on 2, split at 2 (Scene B). Saved after the
+    presets, so a store from before loads intact with `KEYS`.
 
 #### 6. Note Tracking, Persistence, and Pad RGB Feedback
 - **Note tracking:** New `app/note_refs.c`, a pure reference count per channel and note. Morphing changes only the tones that differ, and overlapping chords, strums, arpeggiator steps, and pads cannot cause stuck notes. Mode change, preset change, USB/BLE disconnect, UBOOT entry, and panic release everything.
 - **Persistence (`OBJ_PRESETS`):**
-  - **Per-preset:** Each of the 8 presets stores its 16 custom-assigned pad chords (up to 6 notes + root/type per pad) and controller mappings.
+  - **Per-preset:** Each of the 8 presets stores its controller mappings. Its 16 pad chords are still stored but, since
+    2026-11-14, no longer played (see Chord banks).
+  - **Chord banks (`OBJ_CHORDS`, since 2026-11-14):** 16 banks × 16 pad chords, shared by all presets, plus the active
+    bank, in their own store object (number 3; on the SMK-37, the 4th A/B sector pair in `0x9D000–0xAEFFF`). With no
+    banks saved, presets 1–8's chords become banks 1–8 and the active preset's bank is active. In CHORD and EASY CHORD,
+    `<` / `>` pick the bank on release; `<` + `>` asks to delete it (`DELETE BANK n?`), `<` + `>` again within 5 s
+    clears its pads, one arrow cancels. Elsewhere the arrows still send Program Change. Saving writes only the
+    objects that changed.
+  - **PATCH held:** pads 1–8 show the presets: current white, used red (presets 1–2, and any ever selected:
+    `presets_used`, saved after `chord_pad_ch`), unused green.
   - **Global device-wide (in the store header):** Scale (`Key`, `Scale Type`, `Pad Flavor`), `Voicing`, `Auto-Strum`, and `ARP` settings persist globally across preset changes.
 - **Pad RGB LED states (`plat_pad_rgb`):**
   - Unassigned custom pad (`CHORD` mode): Off `(0, 0, 0)`

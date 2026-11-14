@@ -88,6 +88,7 @@ enum { K5_CC_VOL, K5_CC_ONLY, NK5_MODES };
 enum { CURVE_FACTORY, CURVE_SOFT, CURVE_HARD, CURVE_FIXED, NCURVES };
 enum { PG_MAIN, PG_EDIT, PG_GLOBAL, PG_SCALE, PG_ARP, PG_HW, NPAGES };
 enum { CHORD_HELP_NONE, CHORD_HELP_ASSIGN, CHORD_HELP_EASY };
+enum { REC_OFF, REC_ASSIGN, REC_ERASE };         /* SEQ REC in chord modes: off -> ASSIGN -> ERASE -> off */
 
 /* --------------------------------------------------------------- store --- */
 #define STORE_MAGIC 0x33445043u          /* "CPD3": every knob absolute, K7-K8 on CC 54-55, K9-K16 on CC 102-109 */
@@ -138,11 +139,37 @@ typedef struct {
     uint8_t arp_oct;                     /* 1..3 octaves */
     uint8_t pad_vel_min;                 /* 1..100: pad velocities scaled into pad_vel_min..127 (0, older stores: 1) */
     preset_t presets[NPRESETS];
+    /* Added 2026-11-14 after the presets, so a store saved before then loads (store_read) with these at 0 */
+    uint8_t chord_pad_ch;                /* 0 = the key channel, 1..16 = the chord pads' own MIDI channel */
+    uint8_t presets_used;                /* bit i: preset i+1 has been selected (lit red while PATCH is held) */
+    uint8_t rsv_tail[2];
 } presets_store_t;
+
+#define STORE_LEN_PRE_CHORD_CH ((uint32_t)__builtin_offsetof(presets_store_t, chord_pad_ch))
 
 _Static_assert(sizeof(presets_store_t) <= PLAT_STORE_MAX, "OBJ_PRESETS exceeds 3840-byte store object limit");
 
 static presets_store_t st;
+
+/* The chord pads' 16 banks, shared by every preset (OBJ_CHORDS). CHORD and EASY CHORD play the active bank; < and >
+ * pick it. A preset's own chords[] are no longer played: the first start with banks copies presets 1-8's chords into
+ * banks 1-8 (banks_load), and they stay in OBJ_PRESETS untouched */
+#define NCHORD_BANKS 16u
+#define BANKS_MAGIC 0x314B4243u          /* "CBK1" */
+typedef struct {
+    uint32_t magic;
+    uint8_t active;                      /* 0..NCHORD_BANKS-1 */
+    uint8_t rsv[3];
+    cs_pad_chord_t pads[NCHORD_BANKS][SMK_NPADS];
+} chord_banks_t;
+_Static_assert(sizeof(chord_banks_t) <= PLAT_STORE_MAX, "OBJ_CHORDS exceeds 3840-byte store object limit");
+
+static chord_banks_t cb;
+
+static cs_pad_chord_t *cur_bank(void) { return cb.pads[cb.active % NCHORD_BANKS]; }
+
+enum { SAVE_PRESETS = 1u, SAVE_BANKS = 2u };
+#define BANK_DEL_MS 5000u                /* an unanswered "DELETE BANK?" lapses after this */
 
 /* ------------------------------------------------------------------- UI --- */
 static struct {
@@ -155,7 +182,11 @@ static struct {
     uint8_t latch_on;                    /* LATCH (NOTE REPEAT, B_LFO): chord pads sound until tapped again */
     uint32_t latched_pad;                /* the pad LATCH holds (bit p), kept in pads_on after it is let go */
     uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
-    uint8_t rec_arm;                     /* SEQ REC armed for pad chord assignment */
+    uint8_t rec_arm;                     /* REC_*: SEQ REC armed to assign a chord to a pad, or to erase pads */
+    uint8_t bank_del_arm;                /* < + > pressed once: the next < + > deletes the active bank */
+    uint32_t bank_del_at;                /* plat_ms() it was armed */
+    uint8_t arrow_combo;                 /* < and > were both down during this press: no single-arrow step */
+    int8_t arrow_dir;                    /* the arrow pressed first: -1 <, +1 > */
     uint8_t chord_help;                  /* entry hint, dismissed by the first key/pad strike */
     uint8_t chord_help_seen;             /* show the assignment introduction once per session */
     uint8_t chord_view_first, chord_view_last; /* keep the displayed octave range steady after release */
@@ -187,7 +218,8 @@ static struct {
     uint32_t btn, sb;
     uint8_t home_combo;                  /* 1 if a pad preset shortcut was used while holding PATCH */
     uint8_t page;                        /* PG_* */
-    uint8_t dirty;                       /* 1 if st has unsaved edits */
+    uint8_t dirty;                       /* 1 if st or cb has unsaved edits */
+    uint8_t save_mask;                   /* SAVE_PRESETS / SAVE_BANKS: which objects they are in */
     uint32_t dirty_at;                   /* plat_ms() of last persistent edit */
     uint32_t active_at;                  /* plat_ms() of last note/control activity */
     uint32_t last_out;                   /* last 4-byte USB-MIDI packet sent */
@@ -202,6 +234,12 @@ static struct {
 } ui;
 
 static preset_t *cur_preset(void) { return &st.presets[st.active_preset % NPRESETS]; }
+
+/* Chord pads (CHORD, EASY CHORD, SCALE): their own channel when GLOBAL K6 sets one, else the key channel */
+static uint8_t chord_pad_channel(const preset_t *pr)
+{
+    return st.chord_pad_ch ? (uint8_t)((st.chord_pad_ch - 1u) & 15u) : (uint8_t)(pr->key_ch & 15u);
+}
 
 /* --------------------------------------------------------- text helpers --- */
 static void copy_str(char *dst, uint32_t max, const char *src)
@@ -231,8 +269,16 @@ static void int_text(int32_t v, char *b)
 static void mark_dirty(void)
 {
     ui.dirty = 1;
+    ui.save_mask |= SAVE_PRESETS;
     ui.dirty_at = plat_ms();
     ui.redraw = 1;
+}
+
+static void mark_banks_dirty(void)
+{
+    uint8_t had = ui.save_mask;
+    mark_dirty();
+    ui.save_mask = (uint8_t)(had | SAVE_BANKS);      /* the presets only if they were already waiting */
 }
 
 /* ----------------------------------------------------- preset defaults --- */
@@ -353,14 +399,64 @@ static int store_migrate(presets_store_t *s)
     return 1;
 }
 
+/* 1 if s now holds a saved store: the current size, or one saved before chord_pad_ch (*grew = 1; its tail reads as
+ * 0, the defaults), else 0 */
+static int store_read(presets_store_t *s, int *grew)
+{
+    int n = plat_store_load(OBJ_PRESETS, s, sizeof *s);
+    *grew = 0;
+    if (n == (int)STORE_LEN_PRE_CHORD_CH) {
+        memset((uint8_t *)s + STORE_LEN_PRE_CHORD_CH, 0, sizeof *s - STORE_LEN_PRE_CHORD_CH);
+        *grew = 1;
+    } else if (n != (int)sizeof *s) {
+        return 0;
+    }
+    if (s->chord_pad_ch > 16)
+        s->chord_pad_ch = 0;
+    return 1;
+}
+
 static void store_load(void)
 {
-    int ok = plat_store_load(OBJ_PRESETS, &st, sizeof st) == (int)sizeof st;
-    if (ok && store_migrate(&st))
+    int grew, ok = store_read(&st, &grew);
+    if (ok && (store_migrate(&st) || grew))
         mark_dirty();
     if (!ok || !store_valid(&st))
         store_defaults();
+    st.presets_used |= (uint8_t)(1u << (st.active_preset % NPRESETS));   /* the one in use counts (not saved alone) */
     palette_set(st.theme);
+}
+
+static int banks_valid(const chord_banks_t *b)
+{
+    uint32_t i, k;
+    if (b->magic != BANKS_MAGIC || b->active >= NCHORD_BANKS)
+        return 0;
+    for (i = 0; i < NCHORD_BANKS; i++)
+        for (k = 0; k < SMK_NPADS; k++)
+            if (b->pads[i][k].count > CS_CHORD_NOTES)
+                return 0;
+    return 1;
+}
+
+/* No banks yet (the first start since they came in), or none readable: presets 1-8's pad chords become banks 1-8,
+ * banks 9-16 start empty, and the active preset's bank is the active one, so the pads play what they did */
+static void banks_from_presets(chord_banks_t *b, const presets_store_t *s)
+{
+    uint32_t i;
+    memset(b, 0, sizeof *b);
+    b->magic = BANKS_MAGIC;
+    b->active = (uint8_t)(s->active_preset % NPRESETS);
+    for (i = 0; i < NPRESETS && i < NCHORD_BANKS; i++)
+        memcpy(b->pads[i], s->presets[i].chords, sizeof b->pads[i]);
+}
+
+static void banks_load(void)
+{
+    if (plat_store_load(OBJ_CHORDS, &cb, sizeof cb) == (int)sizeof cb && banks_valid(&cb))
+        return;
+    banks_from_presets(&cb, &st);
+    mark_banks_dirty();
 }
 
 /* ------------------------------------------------------------ MIDI send --- */
@@ -416,6 +512,7 @@ void app_init(void)
     ui.last_key_vel = 100;
     ui.last_pad_vel = 100;
     store_load();
+    banks_load();
 }
 
 void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
@@ -487,8 +584,16 @@ static int say_chord_help(void)
 
 static void save_now(int quiet_toast)
 {
+    uint8_t mask = ui.save_mask ? ui.save_mask : SAVE_PRESETS;      /* SAVE with nothing changed: the presets */
+    int ok;
     all_notes_off();
-    if (plat_store_save(OBJ_PRESETS, &st, sizeof st) == 0) {
+    if ((mask & SAVE_PRESETS) && plat_store_save(OBJ_PRESETS, &st, sizeof st) == 0)
+        mask &= (uint8_t)~SAVE_PRESETS;
+    if ((mask & SAVE_BANKS) && plat_store_save(OBJ_CHORDS, &cb, sizeof cb) == 0)
+        mask &= (uint8_t)~SAVE_BANKS;
+    ok = mask == 0;
+    ui.save_mask = mask;
+    if (ok) {
         ui.dirty = 0;
         if (!quiet_toast)
             app_say("SAVED", cur_preset()->name);
@@ -505,6 +610,10 @@ static void preset_select(uint32_t idx)
         all_notes_off();
         ui.rec_arm = 0;
         st.active_preset = (uint8_t)idx;
+        mark_dirty();
+    }
+    if (!(st.presets_used >> idx & 1u)) {
+        st.presets_used |= (uint8_t)(1u << idx);
         mark_dirty();
     }
     copy_str(ui.last_ctrl, sizeof ui.last_ctrl, "PRESET");
@@ -699,19 +808,39 @@ static void pads_input(void)
             }
     }
 
+    /* SEQ REC ERASE: each tapped pad's chord is cleared, without sounding; ERASE stays on for more */
+    if (ui.chord_on && ui.rec_arm == REC_ERASE && hits) {
+        for (p = 0; p < SMK_NPADS; p++) {
+            if (hits >> p & 1u) {
+                char pnum[12];
+                copy_str(pnum, sizeof pnum, "PAD ");
+                int_text((int32_t)p + 1, pnum + 4);
+                if (cur_bank()[p].count > 0) {
+                    memset(&cur_bank()[p], 0, sizeof cur_bank()[p]);
+                    mark_banks_dirty();
+                    app_say(pnum, "ERASED");
+                } else {
+                    app_say(pnum, "EMPTY");
+                }
+            }
+        }
+        ui.redraw = 1;
+        return;
+    }
+
     /* SEQ REC pad assignment in CHORD mode: tapping any pad stores the latched chord and disarms SEQ REC */
-    if (ui.chord_on && ui.rec_arm && hits) {
+    if (ui.chord_on && ui.rec_arm == REC_ASSIGN && hits) {
         for (p = 0; p < SMK_NPADS; p++) {
             if (hits >> p & 1u) {
                 if (ui.latched_chord.count > 0) {
                     char cname[16], pnum[12];
-                    cs_pad_chord_store(&pr->chords[p], &ui.latched_chord);
+                    cs_pad_chord_store(&cur_bank()[p], &ui.latched_chord);
                     cs_chord_format_name(&ui.latched_chord, cname);
                     copy_str(ui.chord_name, sizeof ui.chord_name, cname);
                     copy_str(pnum, sizeof pnum, "PAD ");
                     int_text((int32_t)p + 1, pnum + 4);
                     ui.rec_arm = 0;
-                    mark_dirty();
+                    mark_banks_dirty();
                     app_say(pnum, cname);
                 } else {
                     ui.rec_arm = 0;
@@ -746,9 +875,9 @@ static void pads_input(void)
             if (ui.chord_on || ui.scale_on) {
                 cs_chord_t c_play;
                 char cname[16];
-                uint8_t ch = pr->key_ch & 15u;
+                uint8_t ch = chord_pad_channel(pr);
                 if (ui.chord_on) {       /* Custom user-assigned chord pads (CHORD or EASY CHORD) */
-                    cs_pad_chord_load(&c_play, &pr->chords[p]);
+                    cs_pad_chord_load(&c_play, &cur_bank()[p]);
                     if (c_play.count == 0) {
                         say_control("EMPTY PAD", (int32_t)p + 1);
                         continue;
@@ -815,7 +944,7 @@ static void pads_input(void)
 
     /* Channel pressure (0xD0 | ch): sent once pressure changes from the initial strike reading */
     if (ui.pads_on && (press_moved || ui.pad_at_active)) {
-        uint8_t at_ch = (ui.chord_on || ui.scale_on) ? (pr->key_ch & 15u) : (pr->pad_ch & 15u);
+        uint8_t at_ch = (ui.chord_on || ui.scale_on) ? chord_pad_channel(pr) : (pr->pad_ch & 15u);
         ui.pad_at_active = 1;
         if (max_press != ui.pad_at_sent) {
             ui.pad_at_sent = max_press;
@@ -830,7 +959,9 @@ static void arp_service(uint32_t now_ms)
     cs_chord_t chords[CS_ARP_MAX_CHORDS];
     uint8_t pad_idx[CS_ARP_MAX_CHORDS];
     uint8_t n_chords = 0, p;
-    uint8_t ch = (ui.chord_on || ui.scale_on || ui.keys_on) ? (pr->key_ch & 15u) : (pr->pad_ch & 15u);
+    /* Keys held: the key channel. Chord pads alone: theirs. The arp keeps each note's channel for its note-off */
+    uint8_t ch = ui.keys_on ? (pr->key_ch & 15u) :
+                 (ui.chord_on || ui.scale_on) ? chord_pad_channel(pr) : (pr->pad_ch & 15u);
     uint8_t vel = ui.pads_on ? ui.last_pad_vel : ui.last_key_vel;
 
     if (!ui.arp_on)
@@ -1000,6 +1131,17 @@ static void page_knob_turn(int idx, int32_t e)
                 mark_dirty();
             }
             say_control("ARP GATE", st.arp_gate);
+        } else if (idx == 5) {
+            int32_t c = clamp((int32_t)st.chord_pad_ch + e, 0, 16);
+            if (c != st.chord_pad_ch) {
+                all_notes_off();
+                st.chord_pad_ch = (uint8_t)c;
+                mark_dirty();
+            }
+            if (c)
+                say_control("CHORD PAD CH", c);
+            else
+                app_say("CHORD PAD CH", "KEYS");
         }
     } else if (ui.page == PG_HW) {
         if (idx == 0) {
@@ -1088,7 +1230,8 @@ static void knobs_input(void)
             e = plat_enc(KNOB_ROLE[i]);
             if (!e)
                 continue;
-            if (ui.page != PG_MAIN && (i < 4 || (ui.page == PG_HW && i == 5))) {   /* HW: K6 is PAD MIN */
+            if (ui.page != PG_MAIN && (i < 4 || ((ui.page == PG_HW || ui.page == PG_GLOBAL) && i == 5))) {
+                /* K6: PAD MIN on HW, CHORD PAD CH on GLOBAL */
                 page_knob_turn(i, e);
                 continue;
             }
@@ -1220,6 +1363,62 @@ static void page_set(int pg)
     app_say("PAGE", PG_NAME[ui.page]);
 }
 
+static void bank_del_cancel(void)
+{
+    if (ui.bank_del_arm) {
+        ui.bank_del_arm = 0;
+        ui.redraw = 1;
+    }
+}
+
+static uint32_t bank_used(uint32_t bank)               /* pads with a chord in that bank */
+{
+    uint32_t p, n = 0;
+    for (p = 0; p < SMK_NPADS; p++)
+        n += cb.pads[bank % NCHORD_BANKS][p].count > 0;
+    return n;
+}
+
+/* < or > alone: the previous / next bank (stops at 1 and 16), or, while a delete is asked, cancel it */
+static void bank_arrow(int dir)
+{
+    int32_t b;
+    if (ui.bank_del_arm) {
+        bank_del_cancel();
+        app_say("DELETE", "CANCELLED");
+        return;
+    }
+    b = clamp((int32_t)cb.active + dir, 0, (int32_t)NCHORD_BANKS - 1);
+    if (b != cb.active) {
+        cb.active = (uint8_t)b;
+        ui.rec_arm = 0;
+        mark_banks_dirty();
+    }
+    say_control("BANK", b + 1);
+    ui.redraw = 1;
+}
+
+/* < + > together: ask, then on the second press clear the active bank's 16 pads */
+static void bank_delete_press(void)
+{
+    uint32_t p;
+    if (!ui.bank_del_arm) {
+        ui.bank_del_arm = 1;
+        ui.bank_del_at = plat_ms();
+        ui.rec_arm = 0;
+        say_control("DELETE BANK?", (int32_t)cb.active + 1);
+        ui.redraw = 1;
+        return;
+    }
+    all_notes_off();
+    for (p = 0; p < SMK_NPADS; p++)
+        memset(&cur_bank()[p], 0, sizeof cur_bank()[p]);
+    ui.bank_del_arm = 0;
+    ui.latched_pad = 0;
+    mark_banks_dirty();
+    say_control("BANK DELETED", (int32_t)cb.active + 1);
+}
+
 static void buttons_input(void)
 {
     preset_t *pr = cur_preset();
@@ -1227,6 +1426,11 @@ static void buttons_input(void)
     uint32_t down = btn & ~ui.btn, up = ui.btn & ~btn;
     uint32_t sdown = sb & ~ui.sb;
     uint32_t k;
+
+    if (ui.bank_del_arm && (!ui.chord_on || plat_ms() - ui.bank_del_at >= BANK_DEL_MS)) {
+        bank_del_cancel();                                  /* left chord modes, or no answer in time */
+        app_say("DELETE", "CANCELLED");
+    }
 
     /* OCT- and OCT+ held together is the 5 s update-mode chord in main_fm1.c; only shift on single presses */
     if ((down & ((1u << B_OCTDN) | (1u << B_OCTUP))) &&
@@ -1341,8 +1545,15 @@ static void buttons_input(void)
     if (ui.chord_on) {
         if (down & (1u << B_REC)) {
             ui.chord_help = CHORD_HELP_NONE;
-            ui.rec_arm ^= 1u;
-            app_say("PAD ASSIGN", ui.rec_arm ? "TAP A PAD" : "CANCELLED");
+            bank_del_cancel();
+            ui.rec_arm = (uint8_t)((ui.rec_arm + 1u) % 3u);
+            if (ui.rec_arm == REC_ASSIGN)
+                app_say("PAD ASSIGN", "TAP A PAD");
+            else if (ui.rec_arm == REC_ERASE)
+                app_say("PAD ERASE", "TAP PADS");
+            else
+                app_say("SEQ REC", "OFF");
+            ui.redraw = 1;
         }
     } else {
         if (down & (1u << B_REC)) {
@@ -1392,6 +1603,26 @@ static void buttons_input(void)
         mark_dirty();
         app_say("FADER BANK", st.fader_bank ? "F5-F8" : "F1-F4");
     }
+    /* CHORD and EASY CHORD: < and > pick the chord-pad bank, on release so both together can mean "delete". Both
+     * together once asks to delete the active bank; both again within BANK_DEL_MS deletes it; one arrow cancels */
+    if (ui.chord_on) {
+        const uint32_t arrows = (1u << SB_LEFT) | (1u << SB_RIGHT);
+        if (sdown & arrows)
+            ui.arrow_dir = (int8_t)((sdown & (1u << SB_RIGHT)) ? 1 : -1);
+        if ((sb & arrows) == arrows && !ui.arrow_combo) {
+            ui.arrow_combo = 1;
+            bank_delete_press();
+        }
+        if ((ui.sb & arrows) && !(sb & arrows)) {          /* the last arrow let go */
+            if (!ui.arrow_combo)
+                bank_arrow(ui.arrow_dir);
+            ui.arrow_combo = 0;
+        }
+        sdown &= ~arrows;
+    } else {
+        ui.arrow_combo = 0;
+    }
+
     /* < and >: the synth's previous / next patch (Program Change on key_ch); shown 1..128 */
     if (sdown & ((1u << SB_LEFT) | (1u << SB_RIGHT))) {
         int32_t prog = clamp((int32_t)ui.program + ((sdown & (1u << SB_RIGHT)) ? 1 : -1), 0, 127);
@@ -1413,9 +1644,14 @@ static void set_pad_color(uint32_t p, uint8_t r, uint8_t g, uint8_t b)
     }
 }
 
+/* A preset in use: 1 (stock pads) and 2 (drums), and any selected since presets_used came in (2026-11-14) */
+static int preset_in_use(uint32_t i)
+{
+    return i < 2u || (st.presets_used >> (i % NPRESETS) & 1u);
+}
+
 static void update_leds(uint32_t now_ms)
 {
-    const preset_t *pr = cur_preset();
     uint32_t b = 0, sb_lit = 0, p;
     uint8_t blink = (uint8_t)((now_ms / 200u) & 1u);
 
@@ -1427,15 +1663,31 @@ static void update_leds(uint32_t now_ms)
 
     for (p = 0; p < SMK_NPADS; p++) {
         int active = (ui.pads_on >> p & 1u) || (ui.arp_on && ui.arp.gate_open && ui.arp.active_pad == p);
-        if (active) {
+        if (plat_buttons() & (1u << B_HOME)) {       /* PATCH held: pads 1-8 pick the preset */
+            if (p >= NPRESETS)
+                set_pad_color(p, 0, 0, 0);
+            else if (p == st.active_preset)
+                set_pad_color(p, 255, 255, 255);     /* the current preset: white */
+            else if (preset_in_use(p))
+                set_pad_color(p, 220, 24, 24);       /* has something on it: red */
+            else
+                set_pad_color(p, 24, 160, 40);       /* unused: green */
+        } else if (active) {
             set_pad_color(p, 255, 160, 80);          /* Active / playing / arpeggiating pad: bright orange/white */
+        } else if (ui.chord_on && ui.rec_arm == REC_ERASE) {
+            if (cur_bank()[p].count == 0)
+                set_pad_color(p, 0, 0, 0);           /* SEQ REC ERASE: nothing to erase, off */
+            else if (blink)
+                set_pad_color(p, 230, 110, 0);       /* a chord to erase: blinking orange */
+            else
+                set_pad_color(p, 50, 20, 0);
         } else if (ui.chord_on && ui.rec_arm) {
             if (blink)
                 set_pad_color(p, 220, 24, 24);       /* SEQ REC armed: blinking red */
             else
                 set_pad_color(p, 40, 0, 0);
         } else if (ui.chord_on) {
-            if (pr->chords[p].count > 0)
+            if (cur_bank()[p].count > 0)
                 set_pad_color(p, 16, 96, 128);       /* Assigned custom chord pad: dim teal/blue */
             else
                 set_pad_color(p, 0, 0, 0);           /* Unassigned custom pad: off */
@@ -1497,7 +1749,7 @@ static void input(void)
 
     /* Auto-save: only after 2 s since last edit and 1.5 s of silence with nothing held or pending */
     if (ui.dirty && now - ui.dirty_at >= SAVE_IDLE_MS && now - ui.active_at >= SAVE_QUIET_MS &&
-        plat_keybed() == 0 && plat_pads_held() == 0 && ui.btn == 0 && ui.sb == 0 && !ui.rec_arm &&
+        plat_keybed() == 0 && plat_pads_held() == 0 && ui.btn == 0 && ui.sb == 0 && !ui.rec_arm && !ui.bank_del_arm &&
         !ui.pedal_val && !cs_strum_pending(&ui.strum) && note_refs_active(&ui.nr) == 0 && !note_refs_pending(&ui.nr)) {
         save_now(1);
     }
@@ -1729,6 +1981,14 @@ static void draw_global_body(void)
 
     cv_text(4, 72, &FONT_XS, "AUTO-STRUM STAGGERS CHORD PAD & EASY", C_GRAY);
     cv_text(4, 90, &FONT_XS, "CHORD TONES NON-BLOCKINGLY (0-120 MS)", C_GRAY);
+    {
+        char t[32] = "K6 CHORD PAD CH: ";
+        if (st.chord_pad_ch)
+            int_text(st.chord_pad_ch, t + 17);
+        else
+            copy_str(t + 17, sizeof t - 17, "KEYS");
+        cv_text(4, 108, &FONT_XS, t, C_HI);
+    }
     cv_text(4, 126, &FONT_T, "GLOBE AGAIN: HARDWARE SETUP   PATCH: MAIN", C_AMB);
     cv_blit(0, 36);
 }
@@ -1778,7 +2038,7 @@ static void draw_footer(const preset_t *pr)
 
     /* 16-pad mini indicator (x = 9..232, 14 px pitch) */
     for (p = 0; p < SMK_NPADS; p++) {
-        int assigned = ui.chord_on ? (pr->chords[p].count > 0) : 1;
+        int assigned = ui.chord_on ? (cur_bank()[p].count > 0) : 1;
         uint16_t c = (ui.pads_on >> p & 1u) ? C_HI : assigned ? C_DIM : C_LINE;
         cv_rect(9 + (int32_t)p * 14, 24, 12, 8, c);
     }
@@ -1908,6 +2168,60 @@ static int host_store_migrate_check(void)
     return !store_migrate(&s);
 }
 
+/* A store saved before chord_pad_ch (shorter) loads with its presets intact and the chord pads on the key channel */
+static int host_store_short_check(void)
+{
+    static presets_store_t keep, s;
+    int grew, ok;
+    keep = st;
+    s = st;
+    s.chord_pad_ch = 0;
+    s.presets[7].key_ch = 5;                                 /* a marker in the last preset, right before the tail */
+    s.presets[7].chords[15].count = 3;
+    if (plat_store_save(OBJ_PRESETS, &s, STORE_LEN_PRE_CHORD_CH) != 0)
+        return 0;
+    memset(&s, 0xA5, sizeof s);
+    ok = store_read(&s, &grew) && grew && s.chord_pad_ch == 0 && s.presets[7].key_ch == 5 &&
+         s.presets[7].chords[15].count == 3 && store_valid(&s);
+    memset(&s, 0, sizeof s);
+    s.magic = 0;                                             /* a full-size store reads back whole, without growing */
+    keep.chord_pad_ch = 2;
+    if (plat_store_save(OBJ_PRESETS, &keep, sizeof keep) != 0)
+        return 0;
+    ok = ok && store_read(&s, &grew) && !grew && s.chord_pad_ch == 2;
+    keep.chord_pad_ch = st.chord_pad_ch;
+    plat_store_save(OBJ_PRESETS, &keep, sizeof keep);       /* put the running store back */
+    return ok;
+}
+
+/* No banks saved yet: presets 1-8's pad chords become banks 1-8, 9-16 empty, the active preset's bank active */
+static int host_banks_check(void)
+{
+    static presets_store_t s;
+    static chord_banks_t b;
+    uint32_t i;
+    s = st;
+    for (i = 0; i < NPRESETS; i++) {
+        memset(s.presets[i].chords, 0, sizeof s.presets[i].chords);
+        s.presets[i].chords[i].count = 2;                    /* preset i+1: a chord on pad i+1 */
+        s.presets[i].chords[i].notes[0] = (uint8_t)(60 + i);
+        s.presets[i].chords[i].notes[1] = (uint8_t)(64 + i);
+    }
+    s.active_preset = 2;
+    banks_from_presets(&b, &s);
+    if (!banks_valid(&b) || b.active != 2)
+        return 0;
+    for (i = 0; i < NCHORD_BANKS; i++) {
+        uint32_t p;
+        for (p = 0; p < SMK_NPADS; p++) {
+            int want = i < NPRESETS && p == i;
+            if ((b.pads[i][p].count != 0) != want || (want && b.pads[i][p].notes[0] != 60 + i))
+                return 0;
+        }
+    }
+    return 1;
+}
+
 int app_expect(const char *what, int *got)
 {
     const preset_t *pr = cur_preset();
@@ -1939,6 +2253,18 @@ int app_expect(const char *what, int *got)
         *got = ui.page;
     else if (!strcmp(what, "store_migrate"))
         *got = host_store_migrate_check();
+    else if (!strcmp(what, "store_pre_chord_ch"))
+        *got = host_store_short_check();
+    else if (!strcmp(what, "chord_pad_ch"))
+        *got = st.chord_pad_ch;
+    else if (!strcmp(what, "bank"))
+        *got = (int)cb.active + 1;
+    else if (!strcmp(what, "bank_used"))
+        *got = (int)bank_used(cb.active);
+    else if (!strcmp(what, "bank_del_arm"))
+        *got = ui.bank_del_arm;
+    else if (!strcmp(what, "banks_from_presets"))
+        *got = host_banks_check();
     else if (!strcmp(what, "dirty"))
         *got = ui.dirty;
     else if (!strcmp(what, "chord_on"))
@@ -1985,7 +2311,7 @@ int app_expect(const char *what, int *got)
         int p = atoi(what + 9);
         if (p < 0 || p >= SMK_NPADS)
             return 0;
-        *got = pr->chords[p].count;
+        *got = cur_bank()[p].count;
     } else if (!strncmp(what, "knob", 4)) {
         int k = atoi(what + 4);
         if (what[4] < '0' || what[4] > '9' || k < 0 || k >= NBANK_KNOBS)

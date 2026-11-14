@@ -40,7 +40,7 @@ static unsigned chord_ui_notes(const preset_t *pr, uint8_t notes[16])
     unsigned n, count = 0;
     memset(notes, 0, 16);
     for (n = 0; n < 128u; n++) {
-        if (ui.nr.refs[pr->key_ch & 15u][n]) {
+        if (ui.nr.refs[pr->key_ch & 15u][n] || ui.nr.refs[chord_pad_channel(pr)][n]) {
             notes[n >> 3] |= (uint8_t)(1u << (n & 7));
             count++;
         }
@@ -108,12 +108,18 @@ static void chord_ui_keyboard(int x, int y, int w, int h, int first, int last,
 
 static void chord_ui_header(const preset_t *pr, const char *mode)
 {
-    char status[20];
+    char status[32];
     cv_text(12, 10, &FONT_B, mode, CH_UI_ACCENT);
-    copy_str(status, sizeof status, "P");
-    int_text((int32_t)st.active_preset + 1, status + 1);
-    copy_str(status + chord_ui_length(status), sizeof status - chord_ui_length(status), "   CH ");
+    copy_str(status, sizeof status, "BANK ");
+    int_text((int32_t)cb.active + 1, status + 5);
+    copy_str(status + chord_ui_length(status), sizeof status - chord_ui_length(status), "  P");
+    int_text((int32_t)st.active_preset + 1, status + chord_ui_length(status));
+    copy_str(status + chord_ui_length(status), sizeof status - chord_ui_length(status), "  CH ");
     int_text((int32_t)pr->key_ch + 1, status + chord_ui_length(status));
+    if (chord_pad_channel(pr) != (pr->key_ch & 15u)) {      /* keys / chord pads, e.g. CH 1/2 */
+        copy_str(status + chord_ui_length(status), sizeof status - chord_ui_length(status), "/");
+        int_text((int32_t)chord_pad_channel(pr) + 1, status + chord_ui_length(status));
+    }
     cv_text(218 - text_w(&FONT_XS, status), 12, &FONT_XS, status, CH_UI_MUTED);
     cv_rect(226, 16, 4, 4, ui.ble_conn ? CH_UI_MOD : CH_UI_LINE);
     cv_line(12, 31, 227, 31, CH_UI_LINE);
@@ -147,7 +153,7 @@ static void chord_ui_performance(const preset_t *pr)
     unsigned active = chord_ui_notes(pr, sounding);
     char name[16], notes_line[80];
     int first = 48 + 12 * st.octave, last, n, lo = 128, hi = -1;
-    int preview = ui.rec_arm && ui.latched_chord.count;
+    int preview = ui.rec_arm == REC_ASSIGN && ui.latched_chord.count;
 
     memcpy(shown, sounding, sizeof shown);
     copy_str(name, sizeof name, ui.chord_name);
@@ -215,16 +221,27 @@ static void chord_ui_performance(const preset_t *pr)
     if (ui.chord_help == CHORD_HELP_ASSIGN) {
         chord_ui_center(202, &FONT_B, "SEQ REC  >  TAP A PAD", CH_UI_ACCENT);
         chord_ui_center(222, &FONT_XS, "Assign the active chord", CH_UI_MUTED);
+    } else if (ui.bank_del_arm) {
+        char ask[32] = "DELETE BANK ";
+        int_text((int32_t)cb.active + 1, ask + 12);
+        copy_str(ask + chord_ui_length(ask), sizeof ask - chord_ui_length(ask), "?");
+        cv_rect(12, 201, 216, 19, RGB(68, 27, 29));
+        chord_ui_center(203, &FONT_B, ask, CH_UI_RED);
+        chord_ui_center(225, &FONT_T, "< + > AGAIN: DELETE    < OR >: KEEP", CH_UI_MUTED);
+    } else if (ui.rec_arm == REC_ERASE) {
+        cv_rect(12, 201, 216, 19, RGB(68, 27, 29));
+        chord_ui_center(203, &FONT_B, "TAP PADS TO ERASE", CH_UI_RED);
+        chord_ui_center(225, &FONT_T, "SEQ REC: DONE", CH_UI_MUTED);
     } else if (ui.rec_arm) {
         cv_rect(12, 201, 216, 19, RGB(68, 27, 29));
         chord_ui_center(203, &FONT_B, "TAP A PAD TO ASSIGN", CH_UI_RED);
-        chord_ui_center(225, &FONT_T, "SEQ REC: CANCEL", CH_UI_MUTED);
+        chord_ui_center(225, &FONT_T, "SEQ REC: ERASE MODE", CH_UI_MUTED);
     } else {
         unsigned p;
         cv_text(12, 201, &FONT_T, "PADS", CH_UI_MUTED);
         for (p = 0; p < SMK_NPADS; p++) {
             uint16_t color = ui.pads_on >> p & 1u ? CH_UI_ACCENT :
-                pr->chords[p].count ? CH_UI_MOD : CH_UI_LINE;
+                cur_bank()[p].count ? CH_UI_MOD : CH_UI_LINE;
             cv_rect(48 + (int)p * 11, 203, 8, 8, color);
         }
         if (plat_ms() < ui.msg_until && !chord_ui_equal(ui.msg[0], "CHORD") && !chord_ui_equal(ui.msg[0], "SCALE ON")) {
