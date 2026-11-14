@@ -23,6 +23,8 @@
 
 static uint8_t lcd_small[64];
 static uint8_t lcd_busy;           /* a lcd_data DMA may still run; CS is low */
+static uint8_t lcd_yield_on;       /* the main loop's app_frame: waiting on a transfer runs plat_yield (Bluetooth
+                                    * sends what the app queued; a full SMK-37 frame takes ~80 ms at 12 MHz) */
 
 static void lcd_spin(uint32_t n)
 {
@@ -34,6 +36,8 @@ static void lcd_sync(void)          /* finish the running transfer (before touch
 {
     if (!lcd_busy)
         return;
+    while (lcd_yield_on && !fm1_lcd_done())
+        plat_yield();
     fm1_lcd_wait();
     fm1_lcd_deselect();
     lcd_busy = 0;

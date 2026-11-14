@@ -12,6 +12,7 @@
  *   fm1_lcd_send_cmd(c)        D/C low, CS low, one byte (then fm1_lcd_wait)
  *   fm1_lcd_send_data(p, n)    D/C high, CS low, DMA n bytes from RAM p
  *   fm1_lcd_wait()             SPI done (or timeout, counted), pending cleared
+ *   fm1_lcd_done()             the transfer ended (polls; fm1_lcd_wait still clears it)
  *   fm1_lcd_deselect()         CS high
  *   fm1_lcd_backlight(on)      nothing: the SMK-37's backlight has no control
  *   fm1_padled_send(p, n)      LCD deselected and idle: SPI1 to PC10 at BAUD 8, DMA n bytes
@@ -74,6 +75,8 @@ static void fm1_lcd_wait(void)
         fm1_lcd_timeouts++;
     FM1_LCD_SPI_CON |= 0x4000u;
 }
+
+FM1_INLINE int fm1_lcd_done(void) { return (FM1_LCD_SPI_CON & 0x8000u) != 0; }   /* the transfer ended */
 
 FM1_INLINE void fm1_lcd_deselect(void) { FM1_LCD_PC_OUT |= FM1_LCD_CS; }
 

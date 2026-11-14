@@ -2109,6 +2109,7 @@ void app_frame(void)
         ui.redraw = 1;
     }
     input();
+    plat_yield();                        /* Bluetooth: what input() just played goes out before the screen draws */
     if (ann_on() && ann_where()) {
         if (!say_chord_help())
             ann_say(APP_NAME, ui.chord_on && ui.chord_name[0] ? ui.chord_name : cur_preset()->name, ANN_NOW);

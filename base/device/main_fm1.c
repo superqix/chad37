@@ -799,7 +799,9 @@ static void fm1_main(void)
             last_frame = fm1_ms;
             fm1b_dbg.ui_frames++;
             fm1b_dbg.stage = 5;
+            lcd_yield_on = 1;                       /* Bluetooth goes on while the frame's strips go out */
             app_frame();
+            lcd_yield_on = 0;
 #if BOARD_SMK37
             padled_flush();                         /* the pads' colours, between LCD transfers (lcd.c) */
 #endif
