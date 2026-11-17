@@ -517,6 +517,7 @@ void cs_arp_init(cs_arp_t *arp)
     for (i = 0; i < sizeof *arp; i++)
         p[i] = 0;
     arp->active_pad = 0xFF;
+    arp->rh_step = 0xFF;
     arp->dir = 1;
     arp->rng = 0x12345678u;
 }
@@ -531,12 +532,21 @@ static void arp_gate_close(cs_arp_t *arp, note_refs_t *nr)
     arp->gate_open = 0;
 }
 
+/* back to the pattern's first step, on the beat */
+static void arp_rewind(cs_arp_t *arp)
+{
+    arp->step_idx = 0;
+    arp->dir = 1;
+    arp->rh_pos = 0;
+    arp->swung = 0;
+}
+
 void cs_arp_stop(cs_arp_t *arp, note_refs_t *nr)
 {
     arp_gate_close(arp, nr);
     arp->was_holding = 0;
-    arp->step_idx = 0;
-    arp->dir = 1;
+    arp_rewind(arp);
+    arp->rh_step = 0xFF;
     arp->ext_clk_ticks = 0;
     arp->ext_step_due = 0;
 }
@@ -559,20 +569,29 @@ static uint32_t step_period_ms(uint8_t bpm, uint8_t arp_div)
     }
 }
 
-void cs_arp_midi_clock(cs_arp_t *arp, uint8_t status_byte, uint8_t arp_div, uint32_t now_ms)
+static uint32_t swing_of(uint8_t swing)
+{
+    return swing < CS_ARP_SWING_MIN ? CS_ARP_SWING_MIN : swing > CS_ARP_SWING_MAX ? CS_ARP_SWING_MAX : swing;
+}
+
+/* MIDI clock: steps fall in pairs of 2 x clocks-per-step; the first on the pair's first clock, the second later
+ * by the swing (at 50 %, halfway) */
+void cs_arp_midi_clock(cs_arp_t *arp, uint8_t status_byte, uint8_t arp_div, uint8_t swing, uint32_t now_ms)
 {
     if (status_byte == 0xFAu) {          /* MIDI Start */
-        arp->step_idx = 0;
-        arp->dir = 1;
+        arp_rewind(arp);
         arp->ext_clk_ticks = 0;
         arp->ext_step_due = 1;
         arp->ext_clk_last_ms = now_ms;
     } else if (status_byte == 0xF8u) {   /* MIDI Timing Clock (24 PPQN) */
-        uint8_t c_per_step = div_clocks(arp_div);
+        uint32_t c = div_clocks(arp_div), late = 2u * c * swing_of(swing) / 100u;
+        uint32_t t = arp->ext_clk_ticks % (2u * c);
+        if (late >= 2u * c)
+            late = 2u * c - 1u;
         arp->ext_clk_last_ms = now_ms;
-        if (arp->ext_clk_ticks == 0u)
+        if (t == 0u || t == late)
             arp->ext_step_due = 1;
-        arp->ext_clk_ticks = (uint8_t)((arp->ext_clk_ticks + 1u) % c_per_step);
+        arp->ext_clk_ticks = (uint8_t)((t + 1u) % (2u * c));
     }
 }
 
@@ -601,14 +620,15 @@ static uint8_t build_tone_pool(const cs_chord_t *chords, uint8_t n_chords, uint8
     return n_pool;
 }
 
+/* rh NULL: straight, every step a note (as before the rhythm) */
 void cs_arp_tick(cs_arp_t *arp, note_refs_t *nr, uint8_t ch,
                  const cs_chord_t *chords, const uint8_t *chord_pad_idx, uint8_t n_chords,
                  uint8_t vel, uint8_t bpm, uint8_t arp_div, uint8_t arp_mode,
-                 uint8_t arp_oct, uint8_t arp_gate, uint32_t now_ms)
+                 uint8_t arp_oct, uint8_t arp_gate, const cs_arp_rhythm_t *rh, uint32_t now_ms)
 {
     uint8_t pool[CS_ARP_MAX_POOL];
-    uint8_t n_pool = 0;
-    uint32_t per_ms, gate_ms;
+    uint8_t n_pool = 0, step, len;
+    uint32_t per_ms, dur_ms, gate_ms, swing;
     int ext_sync, fire_now = 0;
 
     if (n_chords > 0)
@@ -622,16 +642,10 @@ void cs_arp_tick(cs_arp_t *arp, note_refs_t *nr, uint8_t ch,
 
     ext_sync = arp->ext_clk_last_ms != 0u && (now_ms - arp->ext_clk_last_ms) < 500u;
     per_ms = step_period_ms(bpm, arp_div);
-    gate_ms = (per_ms * (arp_gate < 10u ? 10u : arp_gate > 95u ? 95u : arp_gate)) / 100u;
-    if (gate_ms < 10u)
-        gate_ms = 10u;
-    if (gate_ms + 5u > per_ms)
-        gate_ms = per_ms > 5u ? per_ms - 5u : per_ms;
 
     if (!arp->was_holding) {
         arp->was_holding = 1;
-        arp->step_idx = 0;
-        arp->dir = 1;
+        arp_rewind(arp);
         fire_now = 1;
     } else if (ext_sync) {
         if (arp->ext_step_due) {
@@ -648,12 +662,34 @@ void cs_arp_tick(cs_arp_t *arp, note_refs_t *nr, uint8_t ch,
     if (!fire_now)
         return;
 
+    /* This step's length: a pair of steps shares 2 x the period, the first taking the swing's share */
+    swing = swing_of(rh ? rh->swing : CS_ARP_SWING_MIN);
+    dur_ms = 2u * per_ms * swing / 100u;
+    if (arp->swung)
+        dur_ms = 2u * per_ms - dur_ms;
+    arp->swung ^= 1u;
+    gate_ms = (dur_ms * (arp_gate < 10u ? 10u : arp_gate > 95u ? 95u : arp_gate)) / 100u;
+    if (gate_ms < 10u)
+        gate_ms = 10u;
+    if (gate_ms + 5u > dur_ms)
+        gate_ms = dur_ms > 5u ? dur_ms - 5u : dur_ms;
+
     /* Close previous step's notes before triggering the new step */
     arp_gate_close(arp, nr);
-    arp->sounding_ch = ch;
     arp->step_start_ms = now_ms;
+    arp->next_step_ms = now_ms + dur_ms;
+
+    len = rh && rh->len >= 1u && rh->len <= CS_ARP_STEPS ? rh->len : CS_ARP_STEPS;
+    step = (uint8_t)(arp->rh_pos % len);
+    arp->rh_pos = (uint8_t)((step + 1u) % len);
+    arp->rh_step = step;
+    if (rh && (rh->rest >> step & 1u))
+        return;                          /* a rest: nothing sounds, and the notes' order waits for the next step */
+    if (rh && (rh->accent >> step & 1u))
+        vel = (uint8_t)(vel + CS_ARP_ACCENT_ADD > 127u ? 127u : vel + CS_ARP_ACCENT_ADD);
+
+    arp->sounding_ch = ch;
     arp->gate_off_ms = now_ms + gate_ms;
-    arp->next_step_ms = now_ms + per_ms;
     arp->gate_open = 1;
 
     if ((arp_mode % NARP_MODES) == ARP_CHORD) {

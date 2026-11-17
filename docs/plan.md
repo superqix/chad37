@@ -252,6 +252,15 @@ voicing (`K3`). (Until 2026-11-13, EASY CHORD was `CHORD` + `SCALE` together, an
 - Older open items and hardware results are in the local, ignored `docs/handoff.md`, if available; the next-session
   section above covers this UI build and its outstanding hardware checks.
 
+- **Arp rhythm, hold and swing (2026-11-17):** LATCH holds the keys' chord while ARP is on; SEQ REC on the ARP
+  page turns STEP EDIT on, the pads a 16-step pattern of notes, accents (+40 velocity) and rests; K6–K8 on the ARP
+  page are gate (moved from GLOBAL K4), swing (50–75 %, on MIDI clock too) and the pattern's length. Saved at the
+  store's tail (a store from before loads with the defaults: 16 notes, straight). Tests `tests/chord_scale_test.c`
+  (`test_arp_rhythm`) and `app/tests/arp-rhythm.txt`.
+- **Knob and fader overlay (2026-11-16):** on the plain main view, a moving knob or fader draws a big dial or fader
+  over the body (`draw_overlay`), eased toward the value and closed 1.5 s after the last move. Only the body band is
+  redrawn while it moves; test `app/tests/control-overlay.txt`.
+
 ### Later, separate decisions
 Web preset editor over `APP_SYSEX`, note repeat (its button is LATCH now), pads 17–32, manual wheel strum, USB-to-TRS
 thru, and a public release.

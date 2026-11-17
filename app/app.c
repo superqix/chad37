@@ -143,9 +143,17 @@ typedef struct {
     uint8_t chord_pad_ch;                /* 0 = the key channel, 1..16 = the chord pads' own MIDI channel */
     uint8_t presets_used;                /* bit i: preset i+1 has been selected (lit red while PATCH is held) */
     uint8_t rsv_tail[2];
+    /* Added 2026-11-17: the arp's rhythm. A store saved before then loads (store_read) with these at their defaults */
+    uint8_t arp_swing;                   /* 50..75 %: the first step of each pair's share (50 = straight) */
+    uint8_t arp_len;                     /* 1..16 pattern steps */
+    uint16_t arp_rest;                   /* bit s: pattern step s+1 is a rest */
+    uint16_t arp_accent;                 /* bit s: pattern step s+1 is accented */
+    uint8_t rsv_tail2[2];
 } presets_store_t;
 
 #define STORE_LEN_PRE_CHORD_CH ((uint32_t)__builtin_offsetof(presets_store_t, chord_pad_ch))
+#define STORE_LEN_PRE_ARP_RHYTHM ((uint32_t)__builtin_offsetof(presets_store_t, arp_swing))
+_Static_assert(STORE_LEN_PRE_ARP_RHYTHM % 4u == 0u, "the store before the arp rhythm ended here, with no padding");
 
 _Static_assert(sizeof(presets_store_t) <= PLAT_STORE_MAX, "OBJ_PRESETS exceeds 3840-byte store object limit");
 
@@ -181,6 +189,9 @@ static struct {
     uint8_t arp_on;                      /* ARP mode (B_ARP) */
     uint8_t latch_on;                    /* LATCH (NOTE REPEAT, B_LFO): chord pads sound until tapped again */
     uint32_t latched_pad;                /* the pad LATCH holds (bit p), kept in pads_on after it is let go */
+    cs_chord_t arp_hold;                 /* LATCH with ARP: the key chord the arp keeps playing after it is let go */
+    uint8_t arp_hold_keys;               /* keys were down last tick: a new press adds to arp_hold, not replaces it */
+    uint8_t arp_edit;                    /* SEQ REC on the ARP page: the pads edit the rhythm's steps */
     uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
     uint8_t rec_arm;                     /* REC_*: SEQ REC armed to assign a chord to a pad, or to erase pads */
     uint8_t bank_del_arm;                /* < + > pressed once: the next < + > deletes the active bank */
@@ -231,7 +242,19 @@ static struct {
     char msg[2][24];                     /* transient toast banner */
     uint32_t msg_until;
     uint8_t redraw;
+    /* The big knob / fader shown over the main view's body while one moves (draw_overlay) */
+    uint8_t ov_kind;                     /* OV_NONE, OV_KNOB, OV_FADER */
+    uint8_t ov_idx;                      /* the knob (0..15) or fader (0..7), banks included */
+    uint8_t ov_draw;                     /* the overlay alone needs drawing again */
+    uint32_t ov_until;                   /* plat_ms() it closes */
+    uint32_t ov_step_at;                 /* plat_ms() of the last animation step */
+    int32_t ov_pos, ov_goal;             /* the drawn position and the control's, 0..OV_FULL */
 } ui;
+
+enum { OV_NONE, OV_KNOB, OV_FADER };
+#define OV_FULL 1024                     /* overlay position at the control's top */
+#define OV_MS 1500u                      /* the overlay stays this long after the last move */
+#define OV_STEP_MS 16u                   /* animation step: the drawn position halves its way to the control's */
 
 static preset_t *cur_preset(void) { return &st.presets[st.active_preset % NPRESETS]; }
 
@@ -315,6 +338,15 @@ static void preset_init_default(preset_t *p, uint32_t idx)
         p->pad_note[i] = p->pad_map == PAD_MAP_DRUMS ? DRUM_PAD_NOTES[i] : STOCK_PAD_NOTES[i];
 }
 
+/* the arp's rhythm as before it had one: straight, 16 steps, every step a note */
+static void arp_rhythm_defaults(presets_store_t *s)
+{
+    s->arp_swing = CS_ARP_SWING_MIN;
+    s->arp_len = CS_ARP_STEPS;
+    s->arp_rest = 0;
+    s->arp_accent = 0;
+}
+
 static void store_defaults(void)
 {
     uint32_t i;
@@ -342,6 +374,7 @@ static void store_defaults(void)
     st.pad_vel_min = 1;
     for (i = 0; i < NPRESETS; i++)
         preset_init_default(&st.presets[i], i);
+    arp_rhythm_defaults(&st);
 }
 
 static int store_valid(const presets_store_t *s)
@@ -405,14 +438,18 @@ static int store_read(presets_store_t *s, int *grew)
 {
     int n = plat_store_load(OBJ_PRESETS, s, sizeof *s);
     *grew = 0;
-    if (n == (int)STORE_LEN_PRE_CHORD_CH) {
-        memset((uint8_t *)s + STORE_LEN_PRE_CHORD_CH, 0, sizeof *s - STORE_LEN_PRE_CHORD_CH);
+    if (n == (int)STORE_LEN_PRE_CHORD_CH || n == (int)STORE_LEN_PRE_ARP_RHYTHM) {  /* older, shorter stores */
+        memset((uint8_t *)s + n, 0, sizeof *s - (uint32_t)n);
+        arp_rhythm_defaults(s);
         *grew = 1;
     } else if (n != (int)sizeof *s) {
         return 0;
     }
     if (s->chord_pad_ch > 16)
         s->chord_pad_ch = 0;
+    if (s->arp_swing < CS_ARP_SWING_MIN || s->arp_swing > CS_ARP_SWING_MAX || s->arp_len < 1 ||
+        s->arp_len > CS_ARP_STEPS)
+        arp_rhythm_defaults(s);
     return 1;
 }
 
@@ -523,7 +560,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     while (plat_midi_in(&pkt, &port)) {
         uint8_t st_b = (uint8_t)((pkt >> 8) & 0xFFu);
         if (st_b == 0xF8u || st_b == 0xFAu)
-            cs_arp_midi_clock(&ui.arp, st_b, st.arp_div, plat_ms());
+            cs_arp_midi_clock(&ui.arp, st_b, st.arp_div, st.arp_swing, plat_ms());
     }
     for (i = 0; i < 2u * n; i++)
         lr[i] = 0;
@@ -545,6 +582,8 @@ static void all_notes_off(void)
     ui.keys_on = 0;
     ui.pads_on = 0;
     ui.latched_pad = 0;
+    memset(&ui.arp_hold, 0, sizeof ui.arp_hold);
+    ui.arp_hold_keys = 0;
     ui.redraw = 1;
 }
 
@@ -567,6 +606,52 @@ static void say_control(const char *what, int32_t v)
     copy_str(ui.last_ctrl, sizeof ui.last_ctrl, what);
     ui.last_val = v;
     app_say(what, t);
+}
+
+/* The overlay is the plain main view's: the other pages and the chord view keep the header's message */
+static int ov_applies(void) { return ui.page == PG_MAIN && !ui.chord_on; }
+
+/* a knob's or fader's value as the overlay's position, 0..OV_FULL across its range */
+static int32_t ov_goal_of(uint8_t kind, uint8_t idx)
+{
+    const preset_t *pr = cur_preset();
+    int32_t v, lo, hi;
+    if (kind == OV_KNOB) {
+        v = pr->knob_val[idx];
+        lo = pr->knob_min[idx];
+        hi = pr->knob_max[idx];
+    } else {
+        v = ui.fader_val[idx];
+        lo = pr->fader_min[idx];
+        hi = pr->fader_max[idx];
+    }
+    if (hi <= lo)
+        return v > lo ? OV_FULL : 0;
+    v = (v - lo) * OV_FULL / (hi - lo);
+    return v < 0 ? 0 : v > OV_FULL ? OV_FULL : v;
+}
+
+/* A knob or fader moved: on the main view, the big overlay shows it (the reader still hears it); elsewhere the
+ * header's message, as before */
+static void show_control(uint8_t kind, uint8_t idx, const char *name, int32_t v)
+{
+    char t[12];
+    if (!ov_applies()) {
+        say_control(name, v);
+        return;
+    }
+    int_text(v, t);
+    copy_str(ui.last_ctrl, sizeof ui.last_ctrl, name);
+    ui.last_val = v;
+    if (ann_on())
+        ann_say(name, t, ANN_NOW);
+    ui.ov_goal = ov_goal_of(kind, idx);
+    if (ui.ov_kind != kind || ui.ov_idx != idx)
+        ui.ov_pos = ui.ov_goal;          /* another control: no sweep from the last one's position */
+    ui.ov_kind = kind;
+    ui.ov_idx = idx;
+    ui.ov_until = plat_ms() + OV_MS;
+    ui.ov_draw = 1;
 }
 
 static int say_chord_help(void)
@@ -764,6 +849,8 @@ static uint8_t pad_note_of(const preset_t *pr, uint32_t p)
 
 /* LATCH applies while the pads play chords: CHORD on, or SCALE alone (its diatonic pads) */
 static int latch_active(void) { return ui.latch_on && (ui.chord_on || ui.scale_on); }
+/* HOLD: LATCH with ARP on keeps the keys' chord arpeggiating after it is let go (arp_service) */
+static int arp_hold_active(void) { return ui.latch_on && ui.arp_on; }
 
 static void pad_release(uint32_t p)
 {
@@ -806,6 +893,32 @@ static void pads_input(void)
                 preset_select(p);
                 return;
             }
+    }
+
+    /* STEP EDIT (SEQ REC on the ARP page): the pads are the rhythm's 16 steps (the top row 1-8, the bottom row 9-16).
+     * A tap moves a step on: note, accented note, rest, note. Nothing sounds; SEQ REC again and the pads play */
+    if (ui.arp_edit && hits) {
+        for (p = 0; p < SMK_NPADS; p++) {
+            if (hits >> p & 1u) {
+                uint16_t b = (uint16_t)(1u << p);
+                char snum[12];
+                copy_str(snum, sizeof snum, "STEP ");
+                int_text((int32_t)p + 1, snum + 5);
+                if (st.arp_rest & b) {
+                    st.arp_rest &= (uint16_t)~b;
+                    app_say(snum, "NOTE");
+                } else if (st.arp_accent & b) {
+                    st.arp_accent &= (uint16_t)~b;
+                    st.arp_rest |= b;
+                    app_say(snum, "REST");
+                } else {
+                    st.arp_accent |= b;
+                    app_say(snum, "ACCENT");
+                }
+            }
+        }
+        mark_dirty();
+        hits = 0;
     }
 
     /* SEQ REC ERASE: each tapped pad's chord is cleared, without sounding; ERASE stays on for more */
@@ -963,9 +1076,15 @@ static void arp_service(uint32_t now_ms)
     uint8_t ch = ui.keys_on ? (pr->key_ch & 15u) :
                  (ui.chord_on || ui.scale_on) ? chord_pad_channel(pr) : (pr->pad_ch & 15u);
     uint8_t vel = ui.pads_on ? ui.last_pad_vel : ui.last_key_vel;
+    cs_arp_rhythm_t rh;
+    cs_chord_t held;                     /* the keys' chord this tick: held, or kept by HOLD */
 
     if (!ui.arp_on)
         return;
+    rh.swing = st.arp_swing;
+    rh.len = st.arp_len;
+    rh.rest = st.arp_rest;
+    rh.accent = st.arp_accent;
 
     /* Collect held pad chords in order P0..P15 */
     for (p = 0; p < SMK_NPADS; p++) {
@@ -977,29 +1096,49 @@ static void arp_service(uint32_t now_ms)
     }
 
     /* Collect held keybed notes/chord */
-    if (ui.keys_on && n_chords < CS_ARP_MAX_CHORDS) {
+    memset(&held, 0, sizeof held);
+    if (ui.keys_on) {
         if (ui.chord_on && ui.scale_on && ui.latched_chord.count > 0) {
-            chords[n_chords] = ui.latched_chord;
-            chords[n_chords].count = cs_apply_voicing(chords[n_chords].notes, chords[n_chords].count, st.voicing);
-            pad_idx[n_chords] = 0xFF;
-            n_chords++;
+            held = ui.latched_chord;
+            held.count = cs_apply_voicing(held.notes, held.count, st.voicing);
         } else {
-            cs_chord_t kc;
             uint32_t k;
-            memset(&kc, 0, sizeof kc);
-            for (k = 0; k < SMK_NKEYBED && kc.count < CS_MAX_NOTES; k++)
+            for (k = 0; k < SMK_NKEYBED && held.count < CS_MAX_NOTES; k++)
                 if ((ui.keys_on >> k & 1u) && ui.key_note[k] != 0xFFu)
-                    kc.notes[kc.count++] = ui.key_note[k];
-            if (kc.count > 0) {
-                chords[n_chords] = kc;
-                pad_idx[n_chords] = 0xFF;
-                n_chords++;
-            }
+                    held.notes[held.count++] = ui.key_note[k];
         }
     }
 
+    /* HOLD (LATCH with ARP): the keys' chord plays on after it is let go. Keys pressed while others are down join
+     * it; a new chord, after all were let go, replaces it. Easy Chord's chord changes as it is played */
+    if (arp_hold_active()) {
+        if (ui.keys_on && held.count > 0) {
+            if (!ui.arp_hold_keys || (ui.chord_on && ui.scale_on)) {
+                ui.arp_hold = held;
+            } else {
+                uint8_t i, j;
+                for (i = 0; i < held.count; i++) {
+                    for (j = 0; j < ui.arp_hold.count && ui.arp_hold.notes[j] != held.notes[i]; j++)
+                        ;
+                    if (j == ui.arp_hold.count && ui.arp_hold.count < CS_MAX_NOTES)
+                        ui.arp_hold.notes[ui.arp_hold.count++] = held.notes[i];
+                }
+            }
+        }
+        ui.arp_hold_keys = (uint8_t)(ui.keys_on != 0);
+        held = ui.arp_hold;
+        if (held.count && !ui.keys_on)
+            ch = pr->key_ch & 15u;
+    }
+
+    if (held.count > 0 && n_chords < CS_ARP_MAX_CHORDS) {
+        chords[n_chords] = held;
+        pad_idx[n_chords] = 0xFF;
+        n_chords++;
+    }
+
     cs_arp_tick(&ui.arp, &ui.nr, ch, chords, pad_idx, n_chords, vel,
-                st.arp_bpm, st.arp_div, st.arp_mode, st.arp_oct, st.arp_gate, now_ms);
+                st.arp_bpm, st.arp_div, st.arp_mode, st.arp_oct, st.arp_gate, &rh, now_ms);
 }
 
 static void page_knob_turn(int idx, int32_t e)
@@ -1100,6 +1239,30 @@ static void page_knob_turn(int idx, int32_t e)
                 mark_dirty();
             }
             say_control("ARP OCT", st.arp_oct);
+        } else if (idx == 5) {
+            int32_t g = clamp((int32_t)st.arp_gate + e * 5, 10, 95);
+            if (g != st.arp_gate) {
+                st.arp_gate = (uint8_t)g;
+                mark_dirty();
+            }
+            say_control("ARP GATE", st.arp_gate);
+        } else if (idx == 6) {
+            int32_t w = clamp((int32_t)st.arp_swing + e, CS_ARP_SWING_MIN, CS_ARP_SWING_MAX);
+            if (w != st.arp_swing) {
+                st.arp_swing = (uint8_t)w;
+                mark_dirty();
+            }
+            if (w > (int32_t)CS_ARP_SWING_MIN)
+                say_control("ARP SWING", w);
+            else
+                app_say("ARP SWING", "OFF");
+        } else if (idx == 7) {
+            int32_t n = clamp((int32_t)st.arp_len + e, 1, CS_ARP_STEPS);
+            if (n != st.arp_len) {
+                st.arp_len = (uint8_t)n;
+                mark_dirty();
+            }
+            say_control("ARP STEPS", n);
         }
     } else if (ui.page == PG_GLOBAL) {
         if (idx == 0) {
@@ -1124,13 +1287,6 @@ static void page_knob_turn(int idx, int32_t e)
                 mark_dirty();
             }
             app_say("VOICING", CS_VOICING_NAMES[st.voicing]);
-        } else if (idx == 3) {
-            int32_t g = clamp((int32_t)st.arp_gate + e * 5, 10, 95);
-            if (g != st.arp_gate) {
-                st.arp_gate = (uint8_t)g;
-                mark_dirty();
-            }
-            say_control("ARP GATE", st.arp_gate);
         } else if (idx == 5) {
             int32_t c = clamp((int32_t)st.chord_pad_ch + e, 0, 16);
             if (c != st.chord_pad_ch) {
@@ -1223,15 +1379,16 @@ static void knobs_input(void)
                     continue;
                 pr->knob_val[idx] = (uint8_t)nv;
                 send(0xB0u | pr->knob_ch[idx], pr->knob_cc[idx], (uint32_t)nv);
-                say_control(NAME[idx], nv);
+                show_control(OV_KNOB, (uint8_t)idx, NAME[idx], nv);
                 continue;
             }
         } else {
             e = plat_enc(KNOB_ROLE[i]);
             if (!e)
                 continue;
-            if (ui.page != PG_MAIN && (i < 4 || ((ui.page == PG_HW || ui.page == PG_GLOBAL) && i == 5))) {
-                /* K6: PAD MIN on HW, CHORD PAD CH on GLOBAL */
+            if (ui.page != PG_MAIN && (i < 4 || ((ui.page == PG_HW || ui.page == PG_GLOBAL) && i == 5) ||
+                                        (ui.page == PG_ARP && i >= 5))) {
+                /* K6: PAD MIN on HW, CHORD PAD CH on GLOBAL; K6-K8: GATE, SWING, STEPS on ARP */
                 page_knob_turn(i, e);
                 continue;
             }
@@ -1244,14 +1401,14 @@ static void knobs_input(void)
             while (steps--)
                 send(0xB0u | pr->knob_ch[idx], pr->knob_cc[idx], dir_val);
             pr->knob_val[idx] = (uint8_t)clamp(v + e, pr->knob_min[idx], pr->knob_max[idx]);
-            say_control(NAME[idx], e > 0 ? 1 : -1);
+            show_control(OV_KNOB, (uint8_t)idx, NAME[idx], e > 0 ? 1 : -1);
         } else {
             int32_t nv = clamp(v + e, pr->knob_min[idx], pr->knob_max[idx]);
             if (nv == v)
                 continue;
             pr->knob_val[idx] = (uint8_t)nv;
             send(0xB0u | pr->knob_ch[idx], pr->knob_cc[idx], (uint32_t)nv);
-            say_control(NAME[idx], nv);
+            show_control(OV_KNOB, (uint8_t)idx, NAME[idx], nv);
         }
     }
 }
@@ -1272,13 +1429,13 @@ static void faders_input(void)
             uint32_t scaled = lo + ((uint32_t)v * (hi - lo) + 63u) / 127u;
             ui.fader_val[idx] = (uint8_t)scaled;
             send(0xB0u | pr->fader_ch[idx], pr->fader_cc[idx], scaled);
-            say_control(NAME[idx], (int32_t)scaled);
+            show_control(OV_FADER, (uint8_t)idx, NAME[idx], (int32_t)scaled);
         } else {
             ui.fader_val[i] = (uint8_t)v;
             ui.fader_val[i + NFADERS] = (uint8_t)v;
+            ui.redraw = 1;                   /* the first reading: the main view's fader values */
         }
         ui.fader_phys[i] = (int8_t)v;
-        ui.redraw = 1;
     }
 }
 
@@ -1519,15 +1676,20 @@ static void buttons_input(void)
         ui.redraw = 1;
     }
 
-    /* NOTE REPEAT (B_LFO): LATCH for the chord pads, while they play chords; off lets a held chord go */
-    if ((down & (1u << B_LFO)) && (ui.chord_on || ui.scale_on)) {
+    /* NOTE REPEAT (B_LFO): LATCH for the chord pads, while they play chords, and HOLD for the arp's keys while ARP is
+     * on; off lets a held chord go */
+    if ((down & (1u << B_LFO)) && (ui.chord_on || ui.scale_on || ui.arp_on)) {
         ui.latch_on ^= 1u;
         if (!ui.latch_on && ui.latched_pad) {
             for (k = 0; k < SMK_NPADS; k++)
                 if (ui.latched_pad >> k & 1u)
                     pad_release(k);
         }
-        app_say("LATCH", ui.latch_on ? "ON" : "OFF");
+        if (!ui.latch_on) {
+            memset(&ui.arp_hold, 0, sizeof ui.arp_hold);
+            ui.arp_hold_keys = 0;
+        }
+        app_say(ui.arp_on ? "HOLD" : "LATCH", ui.latch_on ? "ON" : "OFF");
         ui.redraw = 1;
     }
 
@@ -1541,8 +1703,16 @@ static void buttons_input(void)
         say_control("PLAY", 0);
     }
 
-    /* SEQ REC (B_REC): arms pad assignment in CHORD mode; sends CC 57 (127/0) when CHORD mode is off */
-    if (ui.chord_on) {
+    /* SEQ REC (B_REC): on the ARP page, step editing on and off; arms pad assignment in CHORD mode; sends CC 57
+     * (127/0) otherwise */
+    if (ui.arp_on && ui.page == PG_ARP) {
+        if (down & (1u << B_REC)) {
+            ui.arp_edit ^= 1u;
+            ui.rec_arm = REC_OFF;
+            app_say("STEP EDIT", ui.arp_edit ? "TAP PADS" : "OFF");
+            ui.redraw = 1;
+        }
+    } else if (ui.chord_on) {
         if (down & (1u << B_REC)) {
             ui.chord_help = CHORD_HELP_NONE;
             bank_del_cancel();
@@ -1672,6 +1842,17 @@ static void update_leds(uint32_t now_ms)
                 set_pad_color(p, 220, 24, 24);       /* has something on it: red */
             else
                 set_pad_color(p, 24, 160, 40);       /* unused: green */
+        } else if (ui.arp_edit) {                    /* STEP EDIT: the pads are the rhythm's steps */
+            if (ui.arp.was_holding && ui.arp.rh_step == p)
+                set_pad_color(p, 255, 255, 255);     /* the step playing: white */
+            else if (p >= st.arp_len)
+                set_pad_color(p, 0, 0, 0);           /* past the pattern's end: off */
+            else if (st.arp_rest >> p & 1u)
+                set_pad_color(p, 50, 0, 0);          /* a rest: dim red */
+            else if (st.arp_accent >> p & 1u)
+                set_pad_color(p, 230, 120, 0);       /* an accent: bright amber */
+            else
+                set_pad_color(p, 16, 96, 128);       /* a note: teal */
         } else if (active) {
             set_pad_color(p, 255, 160, 80);          /* Active / playing / arpeggiating pad: bright orange/white */
         } else if (ui.chord_on && ui.rec_arm == REC_ERASE) {
@@ -1711,7 +1892,7 @@ static void update_leds(uint32_t now_ms)
         b |= 1u << B_SEL;
     if (ui.arp_on)
         b |= 1u << B_ARP;
-    if (latch_active())
+    if (latch_active() || arp_hold_active())
         b |= 1u << B_LFO;
     if (ui.page == PG_EDIT)
         b |= 1u << B_EDIT;
@@ -1721,7 +1902,7 @@ static void update_leds(uint32_t now_ms)
         b |= 1u << B_SAVE;
     if (ui.btn & (1u << B_PLAY))
         b |= 1u << B_PLAY;
-    if (ui.rec_arm || (ui.btn & (1u << B_REC)))
+    if (ui.rec_arm || ui.arp_edit || (ui.btn & (1u << B_REC)))
         b |= 1u << B_REC;
     if (st.knob_bank)
         sb_lit |= 1u << SB_KNOB_BANK;
@@ -1736,6 +1917,8 @@ static void input(void)
 {
     uint32_t now = plat_ms();
     note_refs_flush(&ui.nr);
+    if (ui.arp_edit && !(ui.arp_on && ui.page == PG_ARP))
+        ui.arp_edit = 0;                 /* STEP EDIT is the ARP page's */
     keys_input();
     pads_input();
     cs_strum_tick(&ui.strum, &ui.nr, now);
@@ -1888,6 +2071,124 @@ static void draw_main_body(const preset_t *pr)
     cv_blit(0, 36);
 }
 
+/* ------------------------------------------------- knob / fader overlay --- */
+/* sin of 0..90 degrees in 0.75-degree steps, x 16384; angles below are in these steps, 480 to the circle */
+static const int16_t OV_SIN[121] = {
+    0, 214, 429, 643, 857, 1072, 1285, 1499, 1713, 1926, 2139, 2351, 2563, 2775, 2986, 3196, 3406, 3616, 3825, 4033,
+    4240, 4447, 4653, 4859, 5063, 5266, 5469, 5671, 5872, 6071, 6270, 6467, 6664, 6859, 7053, 7246, 7438, 7629, 7818,
+    8006, 8192, 8377, 8561, 8743, 8923, 9102, 9280, 9456, 9630, 9803, 9974, 10143, 10311, 10477, 10641, 10803, 10963,
+    11121, 11278, 11433, 11585, 11736, 11885, 12031, 12176, 12318, 12458, 12597, 12733, 12867, 12998, 13128, 13255,
+    13380, 13502, 13623, 13741, 13856, 13970, 14081, 14189, 14295, 14399, 14500, 14598, 14694, 14788, 14879, 14968,
+    15053, 15137, 15218, 15296, 15371, 15444, 15515, 15582, 15647, 15709, 15769, 15826, 15880, 15931, 15980, 16026,
+    16069, 16110, 16147, 16182, 16214, 16244, 16270, 16294, 16315, 16333, 16349, 16362, 16371, 16378, 16383, 16384
+};
+
+static int32_t ov_sin(int32_t a)
+{
+    a %= 480;
+    if (a < 0)
+        a += 480;
+    if (a <= 120)
+        return OV_SIN[a];
+    if (a <= 240)
+        return OV_SIN[240 - a];
+    if (a <= 360)
+        return -OV_SIN[a - 240];
+    return -OV_SIN[480 - a];
+}
+
+static int32_t ov_cos(int32_t a) { return ov_sin(a + 120); }
+
+/* the dial's sweep: 270 degrees clockwise from lower left (225 degrees) to lower right; position p of OV_ARC */
+#define OV_ARC 360
+static int32_t ov_angle(int32_t p) { return 300 - p; }
+
+/* a ray from radius r0 to r1 at angle a (screen y down) */
+static void ov_ray(int32_t cx, int32_t cy, int32_t a, int32_t r0, int32_t r1, uint16_t c)
+{
+    int32_t co = ov_cos(a), si = ov_sin(a), r;
+    for (r = r0; r <= r1; r++)
+        cv_pset(cx + ((r * co + 8192) >> 14), cy - ((r * si + 8192) >> 14), c);
+}
+
+static void ov_disc(int32_t cx, int32_t cy, int32_t r, uint16_t c)
+{
+    int32_t dy, w;
+    for (dy = -r; dy <= r; dy++) {
+        for (w = 0; (w + 1) * (w + 1) + dy * dy <= r * r; w++)
+            ;
+        cv_rect(cx - w, cy + dy, 2 * w + 1, 1, c);
+    }
+}
+
+/* the big knob: a 270-degree track lit up to the value, a knob body and its pointer turning with it */
+static void ov_knob(int32_t cx, int32_t cy, int32_t pos)
+{
+    int32_t pv = pos * OV_ARC / OV_FULL, p;
+    for (p = 0; p <= OV_ARC; p++)
+        ov_ray(cx, cy, ov_angle(p), 52, 63, p <= pv && pos > 0 ? C_HI : C_LINE);
+    for (p = pv - 2; p <= pv + 2; p++)                      /* the value's notch across the track */
+        if (p >= 0 && p <= OV_ARC)
+            ov_ray(cx, cy, ov_angle(p), 49, 66, C_WHITE);
+    ov_disc(cx, cy, 42, C_LINE);
+    for (p = 0; p < 9; p++)                                 /* the pointer, a 3 x 3 pen */
+        ov_ray(cx + p % 3 - 1, cy + p / 3 - 1, ov_angle(pv), 12, 37, C_WHITE);
+    ov_disc(cx, cy, 6, C_DIM);
+}
+
+/* the big fader: a slot lit below the cap, scale marks, the cap at the value */
+static void ov_fader(int32_t cx, int32_t top, int32_t bot, int32_t pos)
+{
+    int32_t y = bot - (bot - top) * pos / OV_FULL, i;
+    for (i = 0; i <= 8; i++) {
+        int32_t my = bot - (bot - top) * i / 8, w = i % 4 ? 8 : 14;
+        cv_rect(cx - 16 - w, my, w, 1, C_DIM);
+        cv_rect(cx + 17, my, w, 1, C_DIM);
+    }
+    cv_rect(cx - 4, top, 9, bot - top + 1, C_LINE);
+    cv_rect(cx - 4, y, 9, bot - y + 1, C_HI);
+    cv_rect(cx - 24, y - 9, 49, 19, C_WHITE);
+    cv_rect(cx - 24, y - 1, 49, 3, C_BLACK);
+}
+
+/* Over the main view's body while a knob or fader moves: the control, big, moving with it; its name, value, CC and
+ * channel at the side */
+static void draw_overlay(const preset_t *pr)
+{
+    static const char *const KN[NBANK_KNOBS] = {
+        "K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8",
+        "K9", "K10", "K11", "K12", "K13", "K14", "K15", "K16"
+    };
+    static const char *const FN[NBANK_FADERS] = {"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8"};
+    char t[16];
+    int knob = ui.ov_kind == OV_KNOB;
+    uint32_t i = ui.ov_idx % (knob ? NBANK_KNOBS : NBANK_FADERS);
+    const char *name = knob ? KN[i] : FN[i];
+    int32_t v = knob ? pr->knob_val[i] : ui.fader_val[i];
+    uint32_t cc = knob ? pr->knob_cc[i] : pr->fader_cc[i], ch = (knob ? pr->knob_ch[i] : pr->fader_ch[i]) & 15u;
+
+    cv_begin(240, 144, C_BLACK);
+    cv_line(0, 0, 239, 0, C_DIM);
+    cv_line(0, 143, 239, 143, C_DIM);
+    if (knob)
+        ov_knob(72, 74, ui.ov_pos);
+    else
+        ov_fader(72, 14, 128, ui.ov_pos);
+
+    cv_text(192 - text_w(&APP_BIG_FONT, name) / 2, 10, &APP_BIG_FONT, name, C_WHITE);
+    int_text(v, t);
+    cv_text(192 - text_w(&APP_BIG_FONT, t) / 2, 52, &APP_BIG_FONT, t, C_HI);
+    copy_str(t, sizeof t, "CC ");
+    int_text((int32_t)cc, t + 3);
+    cv_text(192 - text_w(&FONT_XS, t) / 2, 96, &FONT_XS, t, C_GRAY);
+    copy_str(t, sizeof t, "CH ");
+    int_text((int32_t)ch + 1, t + 3);
+    cv_text(192 - text_w(&FONT_XS, t) / 2, 114, &FONT_XS, t, C_GRAY);
+    if (knob && pr->knob_rel[i])
+        cv_text(192 - text_w(&FONT_T, "RELATIVE") / 2, 130, &FONT_T, "RELATIVE", C_AMB);
+    cv_blit(0, 36);
+}
+
 static void draw_scale_body(void)
 {
     char notes_line[32];
@@ -1920,23 +2221,47 @@ static void draw_scale_body(void)
 
 static void draw_arp_body(void)
 {
-    char bpm_s[8], oct_s[8], gt_s[8];
+    char bpm_s[8], oct_s[8], gt_s[8], sw_s[8], len_s[8];
+    uint32_t i;
+    int ext = ui.arp.ext_clk_last_ms && plat_ms() - ui.arp.ext_clk_last_ms < 500u;
     int_text(st.arp_bpm, bpm_s);
     int_text(st.arp_oct, oct_s);
     int_text(st.arp_gate, gt_s);
+    int_text(st.arp_len, len_s);
+    if (st.arp_swing > CS_ARP_SWING_MIN)
+        int_text(st.arp_swing, sw_s);
+    else
+        copy_str(sw_s, sizeof sw_s, "OFF");
 
     cv_begin(240, 144, C_BLACK);
-    cv_text(4, 2, &FONT_B, "ARPEGGIATOR (K1-K4)", C_WHITE);
-    choice_cell(4, 24, "K1 BPM", bpm_s);
-    choice_cell(62, 24, "K2 RATE", CS_ARP_DIV_NAMES[st.arp_div]);
-    choice_cell(120, 24, "K3 MODE", CS_ARP_MODE_NAMES[st.arp_mode]);
-    choice_cell(178, 24, "K4 OCT", oct_s);
+    cv_text(4, 2, &FONT_B, "ARPEGGIATOR", C_WHITE);
+    cv_text(150, 5, &FONT_XS, ext ? "EXT CLK" : "INT CLK", ext ? C_HI : C_GRAY);
+    choice_cell(4, 22, "K1 BPM", ext ? "EXT" : bpm_s);
+    choice_cell(62, 22, "K2 RATE", CS_ARP_DIV_NAMES[st.arp_div]);
+    choice_cell(120, 22, "K3 MODE", CS_ARP_MODE_NAMES[st.arp_mode]);
+    choice_cell(178, 22, "K4 OCT", oct_s);
+    choice_cell(4, 62, "K6 GATE%", gt_s);
+    choice_cell(62, 62, "K7 SWING", sw_s);
+    choice_cell(120, 62, "K8 STEPS", len_s);
+    choice_cell(178, 62, "LATCH", arp_hold_active() ? "HOLD" : "OFF");
 
-    value_cell(4, 72, "GATE", st.arp_gate, 0);
-    cv_text(74, 72, &FONT_XS, (ui.arp.ext_clk_last_ms && plat_ms() - ui.arp.ext_clk_last_ms < 500u)
-                              ? "CLK: EXT MIDI" : "CLK: INTERNAL", C_HI);
-    cv_text(4, 96, &FONT_XS, "HOLD KEYS OR CHORD PADS TO ARPEGGIATE", C_GRAY);
-    cv_text(4, 126, &FONT_T, "PATCH: MAIN CC VIEW   ARP: TURN OFF", C_AMB);
+    /* The rhythm, laid out as the pads: steps 1-8 on top, 9-16 below */
+    for (i = 0; i < CS_ARP_STEPS; i++) {
+        int32_t x = 8 + (int32_t)(i % 8u) * 29, y = 102 + (int32_t)(i / 8u) * 11;
+        if (i >= st.arp_len) {
+            cv_rect(x, y + 8, 26, 1, C_LINE);                /* past the pattern's end: a faint line */
+            continue;
+        }
+        if (st.arp_rest >> i & 1u) {
+            cv_rect(x, y, 26, 9, C_LINE);
+        } else {
+            cv_rect(x, y, 26, 9, st.arp_accent >> i & 1u ? C_HI : C_DIM);
+            if (st.arp_accent >> i & 1u)
+                cv_rect(x, y, 26, 2, C_WHITE);
+        }
+    }
+    cv_text(4, 127, &FONT_T, ui.arp_edit ? "PADS: NOTE > ACCENT > REST   SEQ REC: DONE"
+                                         : "SEQ REC: EDIT STEPS   LATCH: HOLD   ARP: OFF", ui.arp_edit ? C_HI : C_AMB);
     cv_blit(0, 36);
 }
 
@@ -1964,20 +2289,18 @@ static void draw_edit_body(const preset_t *pr)
 
 static void draw_global_body(void)
 {
-    char st_s[12], gt_s[12];
+    char st_s[12];
     if (st.strum_ms == 0) {
         copy_str(st_s, sizeof st_s, "OFF");
     } else {
         int_text(st.strum_ms, st_s);
     }
-    int_text(st.arp_gate, gt_s);
 
     cv_begin(240, 144, C_BLACK);
     cv_text(4, 2, &FONT_B, "GLOBAL MENU: STRUM & VOICE", C_WHITE);
     choice_cell(4, 24, "K1 STRUM", st_s);
     choice_cell(62, 24, "K2 DIR", CS_STRUM_DIR_NAMES[st.strum_dir]);
     choice_cell(120, 24, "K3 VOICE", CS_VOICING_NAMES[st.voicing]);
-    choice_cell(178, 24, "K4 GATE%", gt_s);
 
     cv_text(4, 72, &FONT_XS, "AUTO-STRUM STAGGERS CHORD PAD & EASY", C_GRAY);
     cv_text(4, 90, &FONT_XS, "CHORD TONES NON-BLOCKINGLY (0-120 MS)", C_GRAY);
@@ -2080,9 +2403,31 @@ static void draw(void)
         draw_global_body();
     else if (ui.page == PG_HW)
         draw_hw_body();
+    else if (ui.ov_kind)
+        draw_overlay(pr);
     else
         draw_main_body(pr);
     draw_footer(pr);
+    ui.ov_draw = 0;
+}
+
+/* the knob / fader overlay: its drawn position eases to the control's, and it closes OV_MS after the last move */
+static void overlay_tick(uint32_t now)
+{
+    int32_t d;
+    if (!ui.ov_kind)
+        return;
+    if ((int32_t)(now - ui.ov_until) >= 0 || !ov_applies()) {
+        ui.ov_kind = OV_NONE;
+        ui.redraw = 1;
+        return;
+    }
+    d = ui.ov_goal - ui.ov_pos;
+    if (d && now - ui.ov_step_at >= OV_STEP_MS) {
+        ui.ov_step_at = now;
+        ui.ov_pos += d / 2 ? d / 2 : d;
+        ui.ov_draw = 1;
+    }
 }
 
 void app_ui_init(void)
@@ -2119,9 +2464,13 @@ void app_frame(void)
         ui.msg_until = 0;
         ui.redraw = 1;
     }
+    overlay_tick(now);
     if (ui.redraw) {
         ui.redraw = 0;
         draw();
+    } else if (ui.ov_draw) {
+        ui.ov_draw = 0;
+        draw_overlay(cur_preset());      /* the overlay alone: the header and footer haven't changed */
     }
 }
 
@@ -2195,6 +2544,25 @@ static int host_store_short_check(void)
     return ok;
 }
 
+/* A store saved before the arp's rhythm (2026-11-17, shorter) loads with its settings and the rhythm's defaults */
+static int host_store_pre_arp_check(void)
+{
+    static presets_store_t keep, s;
+    int grew, ok;
+    keep = st;
+    s = st;
+    s.chord_pad_ch = 3;                                      /* a marker right before the new fields */
+    s.presets_used = 0x15;
+    if (plat_store_save(OBJ_PRESETS, &s, STORE_LEN_PRE_ARP_RHYTHM) != 0)
+        return 0;
+    memset(&s, 0xA5, sizeof s);
+    ok = store_read(&s, &grew) && grew && s.chord_pad_ch == 3 && s.presets_used == 0x15 &&
+         s.arp_swing == CS_ARP_SWING_MIN && s.arp_len == CS_ARP_STEPS && !s.arp_rest && !s.arp_accent &&
+         store_valid(&s);
+    plat_store_save(OBJ_PRESETS, &keep, sizeof keep);       /* put the running store back */
+    return ok;
+}
+
 /* No banks saved yet: presets 1-8's pad chords become banks 1-8, 9-16 empty, the active preset's bank active */
 static int host_banks_check(void)
 {
@@ -2258,6 +2626,28 @@ int app_expect(const char *what, int *got)
         *got = host_store_short_check();
     else if (!strcmp(what, "chord_pad_ch"))
         *got = st.chord_pad_ch;
+    else if (!strcmp(what, "arp_swing"))
+        *got = st.arp_swing;
+    else if (!strcmp(what, "arp_len"))
+        *got = st.arp_len;
+    else if (!strcmp(what, "arp_rest"))
+        *got = st.arp_rest;
+    else if (!strcmp(what, "arp_accent"))
+        *got = st.arp_accent;
+    else if (!strcmp(what, "arp_step"))
+        *got = ui.arp.rh_step == 0xFFu ? 0 : ui.arp.rh_step + 1;
+    else if (!strcmp(what, "arp_edit"))
+        *got = ui.arp_edit;
+    else if (!strcmp(what, "arp_hold"))
+        *got = arp_hold_active() ? ui.arp_hold.count : -1;
+    else if (!strcmp(what, "store_pre_arp_rhythm"))
+        *got = host_store_pre_arp_check();
+    else if (!strcmp(what, "ov_kind"))
+        *got = ui.ov_kind;
+    else if (!strcmp(what, "ov_idx"))
+        *got = ui.ov_idx;
+    else if (!strcmp(what, "ov_pos"))
+        *got = ui.ov_pos;
     else if (!strcmp(what, "bank"))
         *got = (int)cb.active + 1;
     else if (!strcmp(what, "bank_used"))

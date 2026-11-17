@@ -1,6 +1,6 @@
 # Chad37 global options
 
-As built on 2026-11-14, read from `app/app.c` and `app/chord_scale.c`.
+As built on 2026-11-17, read from `app/app.c` and `app/chord_scale.c`.
 
 Global settings apply to the whole keyboard: changing preset doesn't change them. All of them are saved on the
 keyboard, about 2 seconds after the last change with nothing held, or right away with **SAVE**.
@@ -16,7 +16,7 @@ Press **GLOBE** once.
 | K1 | Strum | OFF, 5–120 ms in 5 ms steps | OFF | Delay between chord tones, for chord pads and Easy Chord. Doesn't block playing. |
 | K2 | Strum dir | UP, DOWN, ALT | UP | ALT alternates up and down on each strum. |
 | K3 | Voicing | ROOT, 1ST INV, 2ND INV, SPREAD, 2X | ROOT | Same setting as K3 on the Scale page. 2X adds the same chord an octave below. |
-| K4 | Arp gate | 10–95 % in 5 % steps | 75 % | Arpeggiator note length. The other arp settings are on the ARP page. |
+| K4 | — | | | Free: the arp gate moved to the ARP page (K6). |
 | K6 | Chord pad ch | KEYS, 1–16 | KEYS | MIDI channel for chord pads in CHORD, EASY CHORD and SCALE (and their pressure, and the arp while only pads are held). KEYS follows the preset's key channel. Keys always stay on the key channel. With both set, the chord screen header reads `CH 1/2` (keys/pads). |
 
 **Surge XT Channel Split:** set Surge's scene mode to Channel Split with the split channel at 2. With keys on channel 1
@@ -62,8 +62,19 @@ Press **ARP**.
 | K2 | Rate | 1/4, 1/8, 1/16, 1/8T | 1/8 | |
 | K3 | Mode | UP, DOWN, UP/DN, RANDOM, CHORD | UP | CHORD plays each held chord whole, one chord per step, as a progression. |
 | K4 | Octaves | 1–3 | 1 | |
+| K6 | Gate | 10–95 % in 5 % steps | 75 % | Note length, as a share of each step. |
+| K7 | Swing | OFF (50 %), 51–75 % | OFF | The first step of each pair takes this share of the pair: 67 % is a triplet shuffle. Works on external clock too. |
+| K8 | Steps | 1–16 | 16 | The rhythm pattern's length. |
 
-Gate is on the GLOBAL page, K4.
+**Rhythm.** On the ARP page, **SEQ REC** turns STEP EDIT on: the pads become the pattern's steps, 1–8 on the top row
+and 9–16 below, and each tap moves a step on from note to accent to rest. Pads light teal for a note, amber for an
+accent, dim red for a rest, off past the pattern's end, and white for the step playing. Nothing sounds from the pads
+while editing; SEQ REC again (or leaving the page) and they play. An accented step adds 40 to the velocity (127 at
+most); a rest skips a step without losing the notes' order. The default pattern is 16 notes: the arp as it was.
+
+**Hold.** With ARP on, **LATCH** (NOTE REPEAT) holds the keys' chord: let go and it keeps arpeggiating. Keys pressed
+while others are down join the chord; a new chord after letting go replaces it. LATCH again stops it. In CHORD and
+SCALE, LATCH still holds a pad chord too.
 
 ### Buttons
 
@@ -76,6 +87,8 @@ Gate is on the GLOBAL page, K4.
 | < / > (CHORD, Easy Chord) | Chord bank 1–16, stops at the ends | 1 |
 | < / > (other modes) | Program Change 1–128 on the key channel | — |
 | SEQ REC (CHORD, Easy Chord) | ASSIGN (tap a pad: store the chord, then off) → ERASE (tap pads: clear each, stays on) → off | off |
+| SEQ REC (ARP page) | STEP EDIT on / off: the pads edit the arp's rhythm | off |
+| LATCH (NOTE REPEAT) | CHORD / SCALE: holds a pad chord. ARP on: also HOLD for the keys' chord | off |
 | < + > together (CHORD, Easy Chord) | Asks "DELETE BANK n?"; < + > again within 5 s clears its 16 pads; one arrow keeps it | — |
 
 While **PATCH** is held, pads 1–8 show the presets: the current one white, a used one red (presets 1 and 2, and any
@@ -105,6 +118,6 @@ CC 48–55 ch 6, K9–K16 on CC 102–109 ch 1, faders on CC 20–27.
 ## 5. Things that stand out
 
 - **Voicing has two homes:** GLOBAL K3 and Scale page K3 change the same setting.
-- **Arp gate** lives on the GLOBAL page, away from the other four arp settings on the ARP page.
+- **GLOBAL K4** is free since the arp gate moved to the ARP page.
 - **K6** carries a fifth setting on two pages: Chord pad ch on GLOBAL, Pad min on HARDWARE SETUP.
 - **Key, scale and pad flavor** only affect SCALE mode now, but the Scale page still shows them in Easy Chord.

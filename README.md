@@ -19,7 +19,9 @@ plays your synth, DAW or app. That leaves the firmware to do one job well: send 
   voicings, strum and latch. Easy Chord plays full chords from a single key.
 - **Scale mode.** Pick a key and a scale, and the pads fill themselves with the chords that belong in it: triads on
   the bottom row, 7ths or 9ths on the top. The white keys play only notes in the scale.
-- **More:** an arpeggiator that follows MIDI clock, 8 saved presets, pad velocity and pressure, two knob and fader
+- **Arpeggiator.** Hold, swing and a 16-step rhythm of notes, accents and rests, tapped in on the pads. It follows
+  MIDI clock.
+- **More:** 8 saved presets, pad velocity and pressure, two knob and fader
   banks, and big on-screen feedback as you play.
 
 **Status:** in daily use on an SMK-37 Elite, not yet released. The Pro and MKE-P37 builds have never been installed.
@@ -27,6 +29,12 @@ plays your synth, DAW or app. That leaves the firmware to do one job well: send 
 Built on [fm1-base](https://github.com/charlesvestal/fm1-base) and
 [felucca-bsp](https://github.com/hugelton/felucca-bsp), and forked from
 [Erik37](https://github.com/genkigenki/erik37). The name is a nod to Erik37 and short for CHord pAD.
+
+## Main view
+
+Turn a knob or move a fader on the main view and it shows big over the screen's middle: a dial or a fader moving with
+it, with its name, value, CC and channel. It closes 1.5 seconds after the last move. The other pages and the chord
+view keep the short message in the header instead.
 
 ## Chord mode
 
@@ -52,6 +60,18 @@ Press **SCALE**, then set the key with K1 and the scale with K2 (major, the mino
 The white keys play only notes in the scale, starting from the key on C, and the black keys are muted. The pads fill
 with the scale's chords: triads on degrees I to VII and the octave across the bottom row, and 7ths or 9ths across the
 top (K4). K3 sets the voicing, and the tonic pads light brighter.
+
+## Arpeggiator
+
+Press **ARP** to arpeggiate held keys or chord pads: Up, Down, Up/Down, Random or Chord (whole chords in turn), at
+1/4, 1/8, 1/16 or 1/8T, over one to three octaves, on the internal clock or following MIDI clock. K6–K8 set the
+gate, swing and the pattern's length.
+
+- **Hold:** press **LATCH** and the chord keeps playing after you let go. Play a new chord to replace it.
+- **Rhythm:** on the ARP page, press **SEQ REC** and the 16 pads become the pattern's steps. Tap a pad to make its
+  step an accent, tap again for a rest, and again for a plain note. The pads light up with the pattern and a white
+  playhead.
+- **Swing:** from straight to a heavy shuffle, on the internal clock or MIDI clock.
 
 ## Before installing
 

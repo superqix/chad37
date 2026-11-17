@@ -1,0 +1,174 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
+# The arp's HOLD, rhythm and swing. On the ARP page K6-K8 set gate, swing and the pattern's length; LATCH holds the
+# keys' chord; SEQ REC turns STEP EDIT on, where the pads are the 16 steps (note > accent > rest). All saved.
+wait 1200
+listen
+wait 30
+expect store_pre_arp_rhythm 1
+
+tap ARP
+wait 30
+expect arp_on 1
+expect page 4
+expect arp_len 16
+expect arp_swing 50
+expect arp_rest 0
+expect arp_accent 0
+expect arp_hold -1
+shot arp-page.png
+
+# K6 gate, K7 swing, K8 steps (they send no CC here)
+out
+spin SELECT 1
+wait 30
+expect arp_gate 80
+said ARP GATE
+spin ALGO 8
+wait 30
+expect arp_swing 58
+said ARP SWING
+spin ALGO -9
+wait 30
+expect arp_swing 50
+said OFF
+spin PRESET -12
+wait 30
+expect arp_len 4
+said ARP STEPS
+out
+
+# HOLD (LATCH with ARP): the keys' chord plays on after it is let go
+tap LFO
+wait 30
+said HOLD
+expect arp_hold 0
+keybed 12 down
+keybed 16 down
+keybed 19 down
+wait 30
+keybed 12 up
+keybed 16 up
+keybed 19 up
+wait 30
+expect arp_hold 3
+out
+wait 1000
+expect_out USB 90 3C 64
+expect_out USB 90 40 64
+expect_out USB 90 43 64
+expect active_notes <2
+
+# A new chord after all were let go replaces it; a key pressed while others are down joins
+keybed 14 down
+wait 30
+keybed 14 up
+wait 30
+expect arp_hold 1
+keybed 12 down
+wait 30
+keybed 16 down
+wait 30
+keybed 12 up
+wait 30
+keybed 19 down
+wait 30
+keybed 16 up
+keybed 19 up
+wait 30
+expect arp_hold 3
+
+# LATCH off lets it go
+tap LFO
+wait 300
+expect arp_hold -1
+expect active_notes 0
+out
+
+# STEP EDIT: SEQ REC on the ARP page. Pad 2: accent; pad 3: accent, then rest. The pads don't sound
+tap REC
+wait 30
+expect arp_edit 1
+said STEP EDIT
+tappad 1 100
+wait 30
+said ACCENT
+tappad 2 100
+wait 30
+tappad 2 100
+wait 30
+said REST
+expect arp_accent 2
+expect arp_rest 4
+expect active_notes 0
+expect pad0 1073280
+expect pad1 15104000
+expect pad2 3276800
+expect pad4 0
+shot arp-steps.png
+tappad 3 100
+wait 30
+tappad 3 100
+wait 30
+tappad 3 100
+wait 30
+expect arp_accent 2
+expect arp_rest 4
+said NOTE
+tap REC
+wait 30
+expect arp_edit 0
+
+# Play it: 4 steps, note, accent, rest, note. C at 100, E accented (127), a rest, G at 100
+out
+tap LFO
+wait 30
+keybed 12 down
+keybed 16 down
+keybed 19 down
+wait 30
+keybed 12 up
+keybed 16 up
+keybed 19 up
+wait 1000
+expect_out USB 90 3C 64
+expect_out USB 90 40 7F
+expect_out USB 90 43 64
+tap LFO
+wait 300
+expect active_notes 0
+out
+
+# Pads play again with STEP EDIT off: a pad note goes through the arp
+tappad 0 100
+wait 30
+expect arp_edit 0
+
+# STEP EDIT ends off the ARP page
+tap REC
+wait 30
+expect arp_edit 1
+tap HOME
+wait 30
+expect page 0
+expect arp_edit 0
+
+# Gate is no longer on GLOBAL's K4
+tap GLO
+wait 30
+spin K4 3
+wait 30
+expect arp_gate 80
+tap HOME
+wait 30
+
+# All saved
+tap SAVE
+wait 30
+reboot
+wait 1200
+expect arp_gate 80
+expect arp_swing 50
+expect arp_len 4
+expect arp_accent 2
+expect arp_rest 4

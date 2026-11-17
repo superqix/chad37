@@ -199,30 +199,85 @@ static void test_arpeggiator(void)
     log_n = 0;
 
     /* 120 BPM, 1/8 division -> 250 ms step period, 50% gate -> 125 ms gate off */
-    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, 1000);
+    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, NULL, 1000);
     assert(log_n == 1 && log_ev[0].st == 0x90 && log_ev[0].d1 == 60);
 
-    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, 1125);
+    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, NULL, 1125);
     assert(log_n == 2 && log_ev[1].st == 0x80 && log_ev[1].d1 == 60);
 
-    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, 1250);
+    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, NULL, 1250);
     assert(log_n == 3 && log_ev[2].st == 0x90 && log_ev[2].d1 == 64);
 
-    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, 1500);
+    cs_arp_tick(&arp, &nr, 0, &chords[0], &pads[0], 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, NULL, 1500);
     assert(log_n == 5 && log_ev[4].st == 0x90 && log_ev[4].d1 == 67);
 
     /* ARP_CHORD progression mode across two held pads (C Maj -> D Min) */
     cs_arp_stop(&arp, &nr);
     log_n = 0;
-    cs_arp_tick(&arp, &nr, 0, chords, pads, 2, 100, 120, ARP_DIV_1_8, ARP_CHORD, 1, 50, 2000);
+    cs_arp_tick(&arp, &nr, 0, chords, pads, 2, 100, 120, ARP_DIV_1_8, ARP_CHORD, 1, 50, NULL, 2000);
     assert(log_n == 3 && arp.active_pad == 0 && log_ev[0].d1 == 60 && log_ev[1].d1 == 64 && log_ev[2].d1 == 67);
 
-    cs_arp_tick(&arp, &nr, 0, chords, pads, 2, 100, 120, ARP_DIV_1_8, ARP_CHORD, 1, 50, 2250);
+    cs_arp_tick(&arp, &nr, 0, chords, pads, 2, 100, 120, ARP_DIV_1_8, ARP_CHORD, 1, 50, NULL, 2250);
     assert(arp.active_pad == 1 && note_refs_active(&nr) == 3);
 
     cs_arp_stop(&arp, &nr);
     assert(note_refs_active(&nr) == 0);
     printf("chord_scale: arpeggiator Up and full-chord progression modes                 ok\n");
+}
+
+/* the arp's rhythm: a rest keeps the notes' order, an accent adds velocity, swing lengthens each pair's first step */
+static void test_arp_rhythm(void)
+{
+    note_refs_t nr;
+    cs_arp_t arp;
+    cs_chord_t c;
+    cs_arp_rhythm_t rh = {CS_ARP_SWING_MIN, 3, 1u << 1, 1u << 2};   /* 3 steps: note, rest, accent */
+    uint8_t pad = 0xFF;
+    uint32_t i;
+
+    memset(&c, 0, sizeof c);
+    c.count = 3;
+    c.notes[0] = 60;
+    c.notes[1] = 64;
+    c.notes[2] = 67;
+    note_refs_init(&nr, mock_send);
+    cs_arp_init(&arp);
+    log_n = 0;
+
+    /* 120 BPM 1/8: steps every 250 ms */
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 1000);
+    assert(log_n == 1 && log_ev[0].d1 == 60 && log_ev[0].d2 == 100 && arp.rh_step == 0);
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 1250);
+    assert(log_n == 2 && log_ev[1].st == 0x80 && arp.rh_step == 1 && !arp.gate_open);    /* the rest */
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 1500);
+    assert(log_n == 3 && log_ev[2].d1 == 64 && log_ev[2].d2 == 127);  /* E, accented (to 127 at most) */
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 1750);
+    assert(log_n == 5 && log_ev[4].d1 == 67 && arp.rh_step == 0);                       /* the pattern again */
+
+    /* 75 % swing: the pair of 500 ms splits 375 + 125 */
+    cs_arp_stop(&arp, &nr);
+    rh.swing = CS_ARP_SWING_MAX;
+    rh.rest = rh.accent = 0;
+    log_n = 0;
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 3000);
+    assert(log_n == 1 && arp.next_step_ms == 3375);
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 3374);
+    assert(log_n == 2);                                       /* the gate closed; the next step not yet */
+    cs_arp_tick(&arp, &nr, 0, &c, &pad, 1, 100, 120, ARP_DIV_1_8, ARP_UP, 1, 50, &rh, 3375);
+    assert(log_n == 3 && arp.next_step_ms == 3500);
+
+    /* MIDI clock at 1/8 (12 clocks a step): with 75 % swing the pair's second step falls on clock 18, not 12 */
+    cs_arp_stop(&arp, &nr);
+    cs_arp_midi_clock(&arp, 0xFA, ARP_DIV_1_8, CS_ARP_SWING_MAX, 4000);
+    arp.ext_step_due = 0;
+    for (i = 0; i < 24; i++) {
+        cs_arp_midi_clock(&arp, 0xF8, ARP_DIV_1_8, CS_ARP_SWING_MAX, 4000 + i);
+        assert(arp.ext_step_due == (i == 0 || i == 18));
+        arp.ext_step_due = 0;
+    }
+    cs_arp_stop(&arp, &nr);
+    assert(note_refs_active(&nr) == 0);
+    printf("chord_scale: arpeggiator rests, accents and swing (internal and MIDI clock)  ok\n");
 }
 
 int main(void)
@@ -231,5 +286,6 @@ int main(void)
     test_scale_keys_and_diatonic_pads();
     test_auto_strum();
     test_arpeggiator();
+    test_arp_rhythm();
     return 0;
 }

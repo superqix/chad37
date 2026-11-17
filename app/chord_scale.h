@@ -172,14 +172,30 @@ typedef struct {
     uint32_t rng;
     /* External MIDI clock (0xF8) sync state */
     uint32_t ext_clk_last_ms;
-    uint8_t ext_clk_ticks;
+    uint8_t ext_clk_ticks;               /* clocks into the current pair of steps */
     uint8_t ext_step_due;
+    /* Rhythm: the pattern step that fires next, and the one sounding (0xFF none) */
+    uint8_t rh_pos;
+    uint8_t rh_step;
+    uint8_t swung;                       /* the next step is the late one of its pair */
 } cs_arp_t;
+
+/* The arp's rhythm: a pattern of up to 16 steps, each a note, an accented note or a rest, and swing */
+#define CS_ARP_STEPS 16u
+#define CS_ARP_SWING_MIN 50u             /* straight */
+#define CS_ARP_SWING_MAX 75u             /* the first step of each pair takes 75 % of the pair */
+#define CS_ARP_ACCENT_ADD 40u            /* velocity added on an accented step (to 127 at most) */
+typedef struct {
+    uint8_t swing;                       /* 50..75 %: the first step of each pair's share of the pair */
+    uint8_t len;                         /* 1..16 steps */
+    uint16_t rest;                       /* bit s: step s+1 is a rest */
+    uint16_t accent;                     /* bit s: step s+1 is accented */
+} cs_arp_rhythm_t;
 
 void cs_arp_init(cs_arp_t *arp);
 void cs_arp_stop(cs_arp_t *arp, note_refs_t *nr);
-void cs_arp_midi_clock(cs_arp_t *arp, uint8_t status_byte, uint8_t arp_div, uint32_t now_ms);
+void cs_arp_midi_clock(cs_arp_t *arp, uint8_t status_byte, uint8_t arp_div, uint8_t swing, uint32_t now_ms);
 void cs_arp_tick(cs_arp_t *arp, note_refs_t *nr, uint8_t ch,
                  const cs_chord_t *chords, const uint8_t *chord_pad_idx, uint8_t n_chords,
                  uint8_t vel, uint8_t bpm, uint8_t arp_div, uint8_t arp_mode,
-                 uint8_t arp_oct, uint8_t arp_gate, uint32_t now_ms);
+                 uint8_t arp_oct, uint8_t arp_gate, const cs_arp_rhythm_t *rh, uint32_t now_ms);
