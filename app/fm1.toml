@@ -3,7 +3,7 @@
 # Chad37's build settings (fm1-base's tools/build.py: ./build.sh)
 name = "CHAD37"                # the build's files: chad37-smk37{,-elite,-mke}.fwsc
 id_prefix = "FM-1_5701"        # package identity family; only the SMK-37 builds are made
-smk_id_prefix = "5701"         # SMK-37 Pro_5701 + id_suffix (four digits keep the Elite's name within 20)
+smk_id_prefix = "5"            # SMK-37 Elite_5 + 00 (dev) or + XXYYZZ (release, 0.1 = 000100): 20 characters at most
 id_suffix = "00"
 usb_manufacturer = "chad37"
 usb_product = "Chad37"         # the build adds " SMK-37" (the installers find the keyboard by it)

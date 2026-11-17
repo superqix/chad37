@@ -19,8 +19,8 @@ plays your synth, DAW or app. That leaves the firmware to do one job well: send 
   voicings, strum and latch. Easy Chord plays full chords from a single key.
 - **Scale mode.** Pick a key and a scale, and the pads fill themselves with the chords that belong in it: triads on
   the bottom row, 7ths or 9ths on the top. The white keys play only notes in the scale.
-- **Arpeggiator.** Hold, swing and a 16-step rhythm of notes, accents and rests, tapped in on the pads. It follows
-  MIDI clock.
+- **Arpeggiator.** Hold, swing, tap tempo and a 16-step rhythm of notes, accents and rests, tapped in on the pads.
+  It follows MIDI clock.
 - **More:** 8 saved presets, pad velocity and pressure, two knob and fader
   banks, and big on-screen feedback as you play.
 
@@ -72,14 +72,17 @@ gate, swing and the pattern's length.
   step an accent, tap again for a rest, and again for a plain note. The pads light up with the pattern and a white
   playhead.
 - **Swing:** from straight to a heavy shuffle, on the internal clock or MIDI clock.
+- **Tap tempo:** tap **SEQ** in time, and the arp follows.
 
-## Before installing
+## Installing
 
-- Take a full flash backup: [docs/flash-backup.md](docs/flash-backup.md), after `02-update-and-recovery.md` in
-  [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37).
-- The first install clears stock settings. M-Vave's updater returns to stock, which then rebuilds them.
+Download the installer and your model's package from the
+[latest release](https://github.com/superqix/chad37/releases/latest), then follow the
+[install guide](docs/install.md). It takes a few minutes, over USB, from Windows, macOS or Linux, and you can go back
+to M-Vave's firmware at any time. The [user guide](docs/manual.md) explains every control, and
+[global-options.md](docs/global-options.md) lists every setting.
 
-## Building
+## Building from source
 
 Tests, on a Mac or Linux with a C compiler and Python 3:
 

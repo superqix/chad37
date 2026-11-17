@@ -126,7 +126,7 @@ Read via `plat_buttons()` (returns bitmask `1u << B_*`) and `plat_smk_buttons()`
 | **PATCH** | HOME | `B_HOME` | `6` | `12` (`0x95`) | Single LED | Preset / Home screen |
 | **BT** | SAVE | `B_SAVE` | `7` | `11` (`0x86`) | Single LED | Bluetooth / Save |
 | **ARP** | ARP | `B_ARP` | `8` | `6` (`0x75`) | Single LED | Arpeggiator |
-| **SEQ** | SEQ | `B_SEQ` | `9` | `15` (`0x35`) | Single LED | Sequencer |
+| **SEQ** | SEQ | `B_SEQ` | `9` | `15` (`0x35`) | Single LED | Tap tempo in Chad37 |
 | **SEQ PLAY** | PLAY / STOP | `B_PLAY` | `10` | `16` (`0x16`) | Dual: Green (`16`) / Red (`18`) | Use `plat_play_red(1)` for Red, default Green (`LED_PLAY_GREEN`). Stock: CC 56 (Ch 1, 127/0) |
 | **SEQ REC** | REC | `B_REC` | `11` | `17` (`0x46`) | Single Red LED (`0x1b`) | Stock: CC 57 (Ch 1, 127/0) |
 | **OCTAVE-** | OCT- | `B_OCTDN` | `12` | `4` (`0x66`) | Single LED | Shifts keybed octave down (`-2..+2`) |

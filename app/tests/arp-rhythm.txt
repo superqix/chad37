@@ -42,6 +42,7 @@ out
 tap LFO
 wait 30
 said HOLD
+unsaid REPEAT
 expect arp_hold 0
 keybed 12 down
 keybed 16 down
@@ -162,6 +163,28 @@ expect arp_gate 80
 tap HOME
 wait 30
 
+# Tap tempo on SEQ: taps 400 ms apart are 150 BPM (a tap itself takes 80 ms here)
+tap SEQ
+wait 30
+said TAP AGAIN
+unsaid BUTTON
+wait 290
+tap SEQ
+wait 320
+tap SEQ
+wait 320
+tap SEQ
+wait 30
+expect arp_bpm 150
+said TEMPO
+# A pause starts a new count: two taps 500 ms apart are 120
+wait 2000
+tap SEQ
+wait 420
+tap SEQ
+wait 30
+expect arp_bpm 120
+
 # All saved
 tap SAVE
 wait 30
@@ -172,3 +195,4 @@ expect arp_swing 50
 expect arp_len 4
 expect arp_accent 2
 expect arp_rest 4
+expect arp_bpm 120

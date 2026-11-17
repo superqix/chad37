@@ -89,6 +89,8 @@ enum { CURVE_FACTORY, CURVE_SOFT, CURVE_HARD, CURVE_FIXED, NCURVES };
 enum { PG_MAIN, PG_EDIT, PG_GLOBAL, PG_SCALE, PG_ARP, PG_HW, NPAGES };
 enum { CHORD_HELP_NONE, CHORD_HELP_ASSIGN, CHORD_HELP_EASY };
 enum { REC_OFF, REC_ASSIGN, REC_ERASE };         /* SEQ REC in chord modes: off -> ASSIGN -> ERASE -> off */
+#define TAP_N 5u                         /* tap tempo averages the last 4 gaps */
+#define TAP_RESET_MS 1600u               /* a longer pause starts a new count (under 40 BPM's 1500 ms) */
 
 /* --------------------------------------------------------------- store --- */
 #define STORE_MAGIC 0x33445043u          /* "CPD3": every knob absolute, K7-K8 on CC 54-55, K9-K16 on CC 102-109 */
@@ -192,6 +194,8 @@ static struct {
     cs_chord_t arp_hold;                 /* LATCH with ARP: the key chord the arp keeps playing after it is let go */
     uint8_t arp_hold_keys;               /* keys were down last tick: a new press adds to arp_hold, not replaces it */
     uint8_t arp_edit;                    /* SEQ REC on the ARP page: the pads edit the rhythm's steps */
+    uint32_t tap_ms[TAP_N];              /* SEQ: the last taps' plat_ms(), newest first (tap tempo) */
+    uint8_t tap_count;                   /* taps in tap_ms since the last pause */
     uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
     uint8_t rec_arm;                     /* REC_*: SEQ REC armed to assign a chord to a pad, or to erase pads */
     uint8_t bank_del_arm;                /* < + > pressed once: the next < + > deletes the active bank */
@@ -1509,6 +1513,43 @@ static void pedal_input(void)
     }
 }
 
+/* SEQ: tap tempo. From the second tap, the arp's BPM follows the average gap of the last taps (up to 4), and a
+ * running arp's next step lands on the tap. A pause of TAP_RESET_MS starts over. Not while MIDI clock leads */
+static void tap_tempo(uint32_t now)
+{
+    uint32_t i, n;
+    char t[12];
+    if (ui.arp.ext_clk_last_ms && now - ui.arp.ext_clk_last_ms < 500u) {
+        app_say("TAP TEMPO", "EXT CLOCK");
+        return;
+    }
+    if (ui.tap_count && now - ui.tap_ms[0] > TAP_RESET_MS)
+        ui.tap_count = 0;
+    for (i = TAP_N - 1u; i > 0u; i--)
+        ui.tap_ms[i] = ui.tap_ms[i - 1u];
+    ui.tap_ms[0] = now;
+    if (ui.tap_count < TAP_N)
+        ui.tap_count++;
+    if (ui.tap_count < 2u) {
+        app_say("TAP TEMPO", "TAP AGAIN");
+        return;
+    }
+    n = ui.tap_count - 1u;                                  /* gaps */
+    if (now == ui.tap_ms[n])
+        return;
+    i =(uint32_t)clamp((int32_t)((60000u * n + (now - ui.tap_ms[n]) / 2u) / (now - ui.tap_ms[n])), 40, 240);
+    if (i != st.arp_bpm) {
+        st.arp_bpm = (uint8_t)i;
+        mark_dirty();
+    }
+    if (ui.arp.was_holding) {
+        ui.arp.next_step_ms = now;                          /* the next step on this tap, the first of a pair */
+        ui.arp.swung = 0;
+    }
+    int_text((int32_t)st.arp_bpm, t);
+    app_say("TEMPO", t);
+}
+
 static void page_set(int pg)
 {
     static const char *const PG_NAME[NPAGES] = {"MAIN", "EDIT", "GLOBAL", "SCALE", "ARP", "SETUP"};
@@ -1751,13 +1792,16 @@ static void buttons_input(void)
         all_notes_off();
         app_say("PANIC", "ALL OFF");
     }
+    if (down & (1u << B_SEQ))
+        tap_tempo(plat_ms());
     for (k = 0; k < NB; k++) {
         if (!(down >> k & 1u))
             continue;
-        if (k == B_LFO && (ui.chord_on || ui.scale_on))
+        if (k == B_LFO && (ui.chord_on || ui.scale_on || ui.arp_on))
             continue;
         if (k == B_OCTDN || k == B_OCTUP || k == B_ENV || k == B_SEL || k == B_ARP ||
-            k == B_PLAY || k == B_REC || k == B_HOME || k == B_EDIT || k == B_GLO || k == B_SAVE || k == B_FX)
+            k == B_PLAY || k == B_REC || k == B_HOME || k == B_EDIT || k == B_GLO || k == B_SAVE || k == B_FX ||
+            k == B_SEQ)
             continue;
         app_say("BUTTON", BTN_NAME[k]);
     }

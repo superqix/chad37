@@ -252,6 +252,11 @@ voicing (`K3`). (Until 2026-11-13, EASY CHORD was `CHORD` + `SCALE` together, an
 - Older open items and hardware results are in the local, ignored `docs/handoff.md`, if available; the next-session
   section above covers this UI build and its outstanding hardware checks.
 
+- **Release prep (2026-11-17):** `docs/install.md` (users' install, Bluetooth, back to stock), `docs/manual.md`
+  (every control) and `docs/releases/v0.1.md` (the release's notes). `./build.sh --release 0.1` puts the three
+  packages, the installer and `SHA256SUMS` in `build/chad37/`. The SMK-37 identity digits went from `5701` to `5`:
+  a release's `SMK-37 Elite_5701000100` was over the 20-character limit; now `SMK-37 Elite_5000100` (dev builds
+  `SMK-37 Elite_500`). Installs compare only the model, so this installs over earlier builds. SEQ is tap tempo.
 - **Arp rhythm, hold and swing (2026-11-17):** LATCH holds the keys' chord while ARP is on; SEQ REC on the ARP
   page turns STEP EDIT on, the pads a 16-step pattern of notes, accents (+40 velocity) and rests; K6–K8 on the ARP
   page are gate (moved from GLOBAL K4), swing (50–75 %, on MIDI clock too) and the pattern's length. Saved at the

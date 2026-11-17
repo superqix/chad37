@@ -58,7 +58,7 @@ Press **ARP**.
 
 | Knob | Setting | Options / range | Default | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| K1 | BPM | 40–240 in steps of 2 | 120 | Internal clock; follows external MIDI clock automatically when one arrives. |
+| K1 | BPM | 40–240 in steps of 2 | 120 | Internal clock; follows external MIDI clock automatically when one arrives. **SEQ** taps it in (any BPM 40–240). |
 | K2 | Rate | 1/4, 1/8, 1/16, 1/8T | 1/8 | |
 | K3 | Mode | UP, DOWN, UP/DN, RANDOM, CHORD | UP | CHORD plays each held chord whole, one chord per step, as a progression. |
 | K4 | Octaves | 1–3 | 1 | |
@@ -87,6 +87,7 @@ SCALE, LATCH still holds a pad chord too.
 | < / > (CHORD, Easy Chord) | Chord bank 1–16, stops at the ends | 1 |
 | < / > (other modes) | Program Change 1–128 on the key channel | — |
 | SEQ REC (CHORD, Easy Chord) | ASSIGN (tap a pad: store the chord, then off) → ERASE (tap pads: clear each, stays on) → off | off |
+| SEQ | Tap tempo for the arp: two taps or more; a pause of 1.6 s starts over | — |
 | SEQ REC (ARP page) | STEP EDIT on / off: the pads edit the arp's rhythm | off |
 | LATCH (NOTE REPEAT) | CHORD / SCALE: holds a pad chord. ARP on: also HOLD for the keys' chord | off |
 | < + > together (CHORD, Easy Chord) | Asks "DELETE BANK n?"; < + > again within 5 s clears its 16 pads; one arrow keeps it | — |
