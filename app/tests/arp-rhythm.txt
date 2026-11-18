@@ -163,6 +163,47 @@ expect arp_gate 80
 tap HOME
 wait 30
 
+# CHORD with the arp: the chord view shows the held chord, steady, and the arp's notes don't redraw it
+tap HOME
+wait 30
+tap ENV
+wait 30
+expect chord_on 1
+tap ARP
+wait 30
+tap HOME
+wait 30
+expect page 0
+tap LFO
+wait 30
+keybed 12 down
+keybed 16 down
+keybed 19 down
+wait 30
+keybed 12 up
+keybed 16 up
+keybed 19 up
+wait 200
+expect arp_shown 3
+expect draws <1000
+wait 1000
+expect draws <3
+shot arp-chord-view.png
+tap LFO
+wait 300
+expect active_notes 0
+expect arp_shown 0
+tap ARP
+wait 30
+tap ARP
+wait 30
+expect arp_on 0
+tap ENV
+wait 30
+tap ENV
+wait 30
+expect chord_on 0
+
 # Tap tempo on SEQ: taps 400 ms apart are 150 BPM (a tap itself takes 80 ms here)
 tap SEQ
 wait 30

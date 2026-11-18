@@ -194,6 +194,8 @@ static struct {
     cs_chord_t arp_hold;                 /* LATCH with ARP: the key chord the arp keeps playing after it is let go */
     uint8_t arp_hold_keys;               /* keys were down last tick: a new press adds to arp_hold, not replaces it */
     uint8_t arp_edit;                    /* SEQ REC on the ARP page: the pads edit the rhythm's steps */
+    uint8_t arp_shown[16];               /* the notes the arp plays from (bit n: note n), for the chord view */
+    uint8_t arp_shown_n;                 /* how many; 0 while the arp has nothing to play */
     uint32_t tap_ms[TAP_N];              /* SEQ: the last taps' plat_ms(), newest first (tap tempo) */
     uint8_t tap_count;                   /* taps in tap_ms since the last pause */
     uint8_t program;                     /* the last Program Change the arrows sent, 0..127 (this session's) */
@@ -1083,8 +1085,10 @@ static void arp_service(uint32_t now_ms)
     cs_arp_rhythm_t rh;
     cs_chord_t held;                     /* the keys' chord this tick: held, or kept by HOLD */
 
-    if (!ui.arp_on)
+    if (!ui.arp_on) {
+        ui.arp_shown_n = 0;
         return;
+    }
     rh.swing = st.arp_swing;
     rh.len = st.arp_len;
     rh.rest = st.arp_rest;
@@ -1141,8 +1145,30 @@ static void arp_service(uint32_t now_ms)
         n_chords++;
     }
 
-    cs_arp_tick(&ui.arp, &ui.nr, ch, chords, pad_idx, n_chords, vel,
-                st.arp_bpm, st.arp_div, st.arp_mode, st.arp_oct, st.arp_gate, &rh, now_ms);
+    /* The chord view shows the chord the arp plays from, steady, not each note as it sounds: its notes are redrawn
+     * only when they change, and the arp's own notes redraw neither it nor the ARP page */
+    {
+        uint8_t mask[16], n = 0, c, i, keep;
+        memset(mask, 0, sizeof mask);
+        for (c = 0; c < n_chords; c++)
+            for (i = 0; i < chords[c].count; i++) {
+                uint8_t note = chords[c].notes[i] & 127u;
+                if (!(mask[note >> 3] >> (note & 7u) & 1u)) {
+                    mask[note >> 3] |= (uint8_t)(1u << (note & 7u));
+                    n++;
+                }
+            }
+        if (n != ui.arp_shown_n || memcmp(mask, ui.arp_shown, sizeof mask)) {
+            memcpy(ui.arp_shown, mask, sizeof mask);
+            ui.arp_shown_n = n;
+            ui.redraw = 1;
+        }
+        keep = ui.redraw;
+        cs_arp_tick(&ui.arp, &ui.nr, ch, chords, pad_idx, n_chords, vel,
+                    st.arp_bpm, st.arp_div, st.arp_mode, st.arp_oct, st.arp_gate, &rh, now_ms);
+        if (ui.page == PG_ARP || (ui.chord_on && (ui.page == PG_MAIN || ui.page == PG_SCALE)))
+            ui.redraw = keep;
+    }
 }
 
 static void page_knob_turn(int idx, int32_t e)
@@ -2429,9 +2455,16 @@ static void draw_footer(const preset_t *pr)
 
 #include "chord_ui.c"                   /* chord performance view and illustrated Easy Chord introduction */
 
+#ifdef PLAT_HOST
+static uint32_t host_draws;              /* full redraws, for the tests (expect draws: since the last ask) */
+#endif
+
 static void draw(void)
 {
     const preset_t *pr = cur_preset();
+#ifdef PLAT_HOST
+    host_draws++;
+#endif
     if (ui.chord_on && (ui.page == PG_MAIN || ui.page == PG_SCALE)) {
         draw_chord_view(pr);
         return;
@@ -2680,6 +2713,11 @@ int app_expect(const char *what, int *got)
         *got = st.arp_accent;
     else if (!strcmp(what, "arp_step"))
         *got = ui.arp.rh_step == 0xFFu ? 0 : ui.arp.rh_step + 1;
+    else if (!strcmp(what, "draws")) {
+        *got = (int)host_draws;
+        host_draws = 0;
+    } else if (!strcmp(what, "arp_shown"))
+        *got = ui.arp_shown_n;
     else if (!strcmp(what, "arp_edit"))
         *got = ui.arp_edit;
     else if (!strcmp(what, "arp_hold"))

@@ -157,6 +157,11 @@ static void chord_ui_performance(const preset_t *pr)
 
     memcpy(shown, sounding, sizeof shown);
     copy_str(name, sizeof name, ui.chord_name);
+    if (ui.arp_on && ui.arp_shown_n && !preview) {
+        /* The arp plays one note at a time: show the chord it plays from, steady, under the chord's name */
+        memcpy(shown, ui.arp_shown, sizeof shown);
+        active = ui.arp_shown_n;
+    }
     if (preview) {
         memset(shown, 0, sizeof shown);
         for (n = 0; n < ui.latched_chord.count; n++) {

@@ -79,8 +79,7 @@ gate, swing and the pattern's length.
 Download the installer and your model's package from the
 [latest release](https://github.com/superqix/chad37/releases/latest), then follow the
 [install guide](docs/install.md). It takes a few minutes, over USB, from Windows, macOS or Linux, and you can go back
-to M-Vave's firmware at any time. The [user guide](docs/manual.md) explains every control, and
-[global-options.md](docs/global-options.md) lists every setting.
+to M-Vave's firmware at any time. The [user guide](docs/manual.md) covers every control, mode, and setting in detail.
 
 ## Building from source
 
