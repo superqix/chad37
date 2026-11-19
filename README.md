@@ -4,23 +4,26 @@
 
 <h1 align="center">Chad37</h1>
 
-<p align="center"><b>Chord-pad MIDI controller firmware for the M-Vave SMK-37</b></p>
+<p align="center"><b>MIDI controller firmware for the M-Vave SMK-37, with your own chords on the pads</b></p>
 
-Chad37 turns the SMK-37 into a pure MIDI controller. It makes no sound of its own: every key, pad, knob and fader
-plays your synth, DAW or app. That leaves the firmware to do one job well: send clean, predictable MIDI, fast.
+Chad37 turns the SMK-37 into a pure MIDI controller with your own chords on the pads. Play any chord on the keys,
+put it on a pad, and from then on it's one tap away: a whole progression under your fingers, ready to play, strum or
+arpeggiate. Chad37 makes no sound of its own: every key, pad, knob and fader plays your synth, DAW or app, with clean,
+predictable MIDI.
 
-- **Controls that behave.** The stock firmware's quirks are gone. Knobs K7–K16 sent relative values, which most
-  synths read as a two-position switch. The faders sat on the sustain, portamento, sostenuto and soft-pedal CCs, so
-  fader 1 held notes like a sustain pedal and wouldn't MIDI-learn. In Chad37 every knob sends an absolute 0–127, and
-  the faders use CCs the MIDI standard leaves free (20–27).
-- **Low latency, wired or wireless.** Tested on Windows, macOS and iOS, over a USB cable and Bluetooth MIDI.
-  Bluetooth stays connected and keeps up with the cable. The TRS MIDI jack sends the same messages.
-- **Chord mode.** Play any chord on the keys and assign it to a pad. There are 16 pads per bank and 16 banks, with
-  voicings, strum and latch. Easy Chord plays full chords from a single key.
+- **Your chords on the pads.** Play a chord on the keys and put it on any pad; the screen names it. There are 16
+  pads per bank and 16 banks, shared by every preset, with voicings, strum, latch and their own MIDI channel. Easy
+  Chord plays full chords from a single key.
 - **Scale mode.** Pick a key and a scale, and the pads fill themselves with the chords that belong in it: triads on
   the bottom row, 7ths or 9ths on the top. The white keys play only notes in the scale.
 - **Arpeggiator.** Hold, swing, tap tempo and a 16-step rhythm of notes, accents and rests, tapped in on the pads.
   It follows MIDI clock.
+- **Controls that behave.** The stock firmware's quirks are gone. Knobs K7–K16 sent relative values, which most
+  synths read as a two-position switch. The faders sat on the sustain, portamento, sostenuto and soft-pedal CCs, so
+  fader 1 held notes like a sustain pedal and wouldn't MIDI-learn. In Chad37 every knob sends an absolute 0–127, with
+  acceleration as you spin it, and the faders use CCs the MIDI standard leaves free (20–27).
+- **Low latency, wired or wireless.** Tested on Windows, macOS and iOS, over a USB cable and Bluetooth MIDI.
+  Bluetooth stays connected and keeps up with the cable. The TRS MIDI jack sends the same messages.
 - **More:** 8 saved presets, pad velocity and pressure, two knob and fader
   banks, and big on-screen feedback as you play.
 

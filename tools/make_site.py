@@ -63,7 +63,7 @@ def manual(out):
     page = out / "index.html"
     subprocess.run([sys.executable, str(ROOT / "base" / "tools" / "manual_html.py"), str(src), str(page),
                     "--name", "Chad37", "--repo", REPO,
-                    "--tagline", "Chord-pad MIDI controller firmware for the M-Vave SMK-37"], check=True,
+                    "--tagline", "MIDI controller firmware for the M-Vave SMK-37, with your own chords on the pads"], check=True,
                    capture_output=True)
     src.unlink()
     text = re.sub(r'href="([\w-]+\.md)(#[^"]*)?"', lambda m: f'href="{REPO}/blob/main/docs/{m[1]}{m[2] or ""}"',
