@@ -6,6 +6,8 @@
   index.html     the installer (site/index.html, with fm1-base's web/fm1pkg.js and web/fm1ota.js and the packages'
                  metadata inlined; Chrome or Edge, Web MIDI)
   logo.png       docs/chad37-logo.png
+  chord-ui.png   docs/chord-ui-review.png, the chord screens
+  sponsors/      docs/sponsors: the sponsors' logos, light and dark
   manual/        the user guide, docs/manual.md as a page (fm1-base's tools/manual_html.py); its links to the other
                  docs go to them on GitHub
   firmware/      the release's packages, which the installer downloads: it picks the one for the keyboard it finds
@@ -109,9 +111,11 @@ def main(pkg_dir, version, out):
         raise SystemExit("site/index.html: a {{...}} left unfilled")
     (out / "index.html").write_text(html.replace("/*LIB*/", lib).replace("/*META*/", meta), encoding="utf-8")
     shutil.copy(ROOT / "docs" / "chad37-logo.png", out / "logo.png")
+    shutil.copy(ROOT / "docs" / "chord-ui-review.png", out / "chord-ui.png")
+    shutil.copytree(ROOT / "docs" / "sponsors", out / "sponsors")
     manual(out / "manual")
     (out / ".nojekyll").write_text("")
-    print(f"site: {out}: index.html, logo.png, manual/, firmware/ ({', '.join(m['product'] for m in models)})")
+    print(f"site: {out}: index.html, logo.png, chord-ui.png, sponsors/, manual/, firmware/ ({', '.join(m['product'] for m in models)})")
 
 
 if __name__ == "__main__":

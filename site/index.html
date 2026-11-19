@@ -66,6 +66,11 @@
   details { margin-top: 12px; color: var(--dim); font-size: 13px; }
   details pre { white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; background: var(--code);
                 padding: 8px; border-radius: 8px; }
+  .shot { margin: 16px 0 0; }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+  .shot figcaption { margin-top: 8px; font-size: 13px; color: var(--dim); }
+  .sponsors { display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: center; margin: 4px 0 16px; }
+  .sponsors img { display: block; height: 48px; width: auto; max-width: 100%; }
   .warn { border-left: 4px solid var(--accent); padding: 4px 0 4px 12px; margin: 16px 0; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 0 0 12px; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -112,6 +117,18 @@
     <p id="alert" role="alert"></p>
     <p id="next" hidden>Next: the <a href="manual/">user guide</a> shows what every button, knob and pad does.</p>
     <details><summary>Details</summary><pre id="log"></pre></details>
+  </section>
+
+  <section class="card" aria-labelledby="look-h">
+    <h2 id="look-h">What it looks like</h2>
+    <p>Play a chord on the keys and the screen names it, with its notes lit. Press <b>SEQ REC</b> and tap a pad, and
+      that chord is on the pad from then on. <b>Easy Chord</b> plays full chords from single keys: a root, plus a key to
+      its left for minor, 7th and more.</p>
+    <figure class="shot">
+      <a href="chord-ui.png"><img src="chord-ui.png" width="1064" height="1244" loading="lazy"
+        alt="Four Chad37 screens. Chord mode waiting: PLAY A CHORD, with SEQ REC then tap a pad to assign it. Chord mode playing: C MAJ in large letters, with C4, E4 and G4 lit on a keyboard. Easy Chord's quick start: C equals C major, with the modifier keys sus4, minor, 7 and maj7 to the left of the root. Easy Chord playing: C MIN7, with C4, D sharp 4, G4 and A sharp 4 lit."></a>
+      <figcaption>The chord screens, from the simulator. Tap the picture for full size.</figcaption>
+    </figure>
   </section>
 
   <section class="card" aria-labelledby="before-h">
@@ -165,6 +182,26 @@
     <p><a href="{{REPO}}/releases/tag/v{{VERSION}}">Release notes and downloads</a>, with the command-line installer
       for those who prefer it (<a href="{{REPO}}/blob/main/docs/install.md">install guide</a>).</p>
     <p><a href="{{REPO}}/issues">Report a problem or tell us it worked</a>.</p>
+  </section>
+
+  <section class="card" aria-labelledby="sponsors-h">
+    <h2 id="sponsors-h">Sponsors</h2>
+    <div class="sponsors">
+      <a href="https://chordcade.com/">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="sponsors/chordcade-dark.png">
+          <img src="sponsors/chordcade-light.png" alt="Chordcade" width="255" height="48" loading="lazy">
+        </picture>
+      </a>
+      <a href="https://ponywolf.com/">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="sponsors/ponywolf-dark.png">
+          <img src="sponsors/ponywolf-light.png" alt="Ponywolf" width="177" height="48" loading="lazy">
+        </picture>
+      </a>
+    </div>
+    <p class="small"><a href="https://chordcade.com/">Chordcade</a>: play chords with the game controller you already
+      own.<br><a href="https://ponywolf.com/">Ponywolf</a>: retro gaming, reimagined.</p>
   </section>
 </main>
 <footer>
