@@ -5,7 +5,8 @@ As built on 2026-11-18, read from `app/app.c` and `app/chord_scale.c`.
 Global settings apply to the whole keyboard: changing preset doesn't change them. All of them are saved on the
 keyboard, about 2 seconds after the last change with nothing held, or right away with **SAVE**.
 
-Steps are per knob detent. Ranges stop at their ends; nothing wraps around.
+On these pages a setting moves one step per knob detent (KNOB SPEED doesn't apply to them). Ranges stop at their
+ends; nothing wraps around.
 
 ## 1. Global menu: strum & voice
 

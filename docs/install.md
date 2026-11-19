@@ -25,8 +25,11 @@ cable that carries data (some charging cables don't).
 3. The page shows your model and its firmware, and fetches the right package. Press **Install**, and don't unplug the
    keyboard while it writes (a minute or two).
 
-When it's done, the keyboard shows the Chad37 face, then the main screen. If an install stops part way (cable out,
-computer asleep), press **Find my keyboard** again: the keyboard waits in update mode and the page finishes it.
+When it's done, the keyboard shows the Chad37 face, then the main screen. The
+[user guide](https://superqix.github.io/chad37/manual/) shows what every button, knob and pad does.
+
+If an install stops part way (cable out, computer asleep), press **Find my keyboard** again: the keyboard waits in
+update mode and the page finishes it.
 
 ## The command-line way
 

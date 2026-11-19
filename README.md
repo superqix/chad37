@@ -24,7 +24,7 @@ plays your synth, DAW or app. That leaves the firmware to do one job well: send 
 - **More:** 8 saved presets, pad velocity and pressure, two knob and fader
   banks, and big on-screen feedback as you play.
 
-**Status:** version 0.1, in daily use on an SMK-37 Elite and tested by a user on an SMK-37 Pro. The MKE-P37 build has
+**Status:** version 0.2, in daily use on an SMK-37 Elite and tested by a user on an SMK-37 Pro. The MKE-P37 build has
 never been installed.
 
 Built on [fm1-base](https://github.com/charlesvestal/fm1-base) and
@@ -80,7 +80,8 @@ gate, swing and the pattern's length.
 **[Install from your browser](https://superqix.github.io/chad37/)**: plug the keyboard in by USB, open the page in Chrome or Edge, and press
 Install. It finds your model and picks the right package, with nothing to set up. You can go back to M-Vave's firmware
 at any time. The [install guide](docs/install.md) has the details, and a command-line installer for those who prefer
-it. The [user guide](docs/manual.md) covers every control, mode, and setting in detail.
+it. The [user guide](https://superqix.github.io/chad37/manual/) covers every control, mode, and setting in detail
+(also [here on GitHub](docs/manual.md)).
 
 ## Building from source
 
@@ -102,11 +103,12 @@ Each model has its own package in `build/chad37/` (`chad37-smk37.fwsc` for SMK-3
 python3 base/tools/fm1_install.py build/chad37/chad37-smk37-elite.fwsc
 ```
 
-The web installer is `site/index.html`. `tools/make_site.py` builds the site from a release's packages, and
+The web installer is `site/index.html`, and the site also carries the user guide as a page. `tools/make_site.py`
+builds the site from a release's packages and `docs/manual.md`, and
 `.github/workflows/pages.yml` publishes it to GitHub Pages each time a release is published:
 
 ```bash
-python3 tools/make_site.py build/chad37 0.1 build/site
+python3 tools/make_site.py build/chad37 0.2 build/site
 ```
 
 ## Licence

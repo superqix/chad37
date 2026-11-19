@@ -39,6 +39,7 @@
                border: 1px solid var(--line); }
   h1 { font-size: 28px; line-height: 1.2; margin: 0; }
   .tag { color: var(--dim); margin: 2px 0 0; }
+  .links { margin: 4px 0 0; font-size: 15px; font-weight: 600; }
   h2 { font-size: 20px; margin: 0 0 12px; }
   h3 { font-size: 16px; margin: 24px 0 8px; }
   p { margin: 0 0 12px; }
@@ -84,6 +85,8 @@
     <div>
       <h1>Chad37 {{VERSION}}</h1>
       <p class="tag">Chord-pad MIDI controller firmware for the M-Vave SMK-37</p>
+      <p class="links"><a href="manual/">User guide</a> · <a href="{{REPO}}">Source</a> ·
+        <a href="{{REPO}}/releases/tag/v{{VERSION}}">What's new</a></p>
     </div>
   </header>
 
@@ -107,6 +110,7 @@
     <progress id="bar" max="100" value="0" hidden></progress>
     <p id="status" role="status"></p>
     <p id="alert" role="alert"></p>
+    <p id="next" hidden>Next: the <a href="manual/">user guide</a> shows what every button, knob and pad does.</p>
     <details><summary>Details</summary><pre id="log"></pre></details>
   </section>
 
@@ -157,7 +161,7 @@
 
   <section class="card" aria-labelledby="more-h">
     <h2 id="more-h">More</h2>
-    <p><a href="{{REPO}}/blob/main/docs/manual.md">User guide</a>: every control and mode.</p>
+    <p><a href="manual/">User guide</a>: every control, mode and setting.</p>
     <p><a href="{{REPO}}/releases/tag/v{{VERSION}}">Release notes and downloads</a>, with the command-line installer
       for those who prefer it (<a href="{{REPO}}/blob/main/docs/install.md">install guide</a>).</p>
     <p><a href="{{REPO}}/issues">Report a problem or tell us it worked</a>.</p>
@@ -252,6 +256,7 @@ $("find").addEventListener("click", async () => {
   $("go").disabled = true;
   $("device").hidden = true;
   $("bar").hidden = true;
+  $("next").hidden = true;
   if (!midi) {
     try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
     catch (e) { fault(FAULTS.denied); log(String(e)); return; }
@@ -321,7 +326,8 @@ $("go").addEventListener("click", async () => {
   try {
     if (target.loader) await up.finish(target.image, target.product, step);
     else await up.install(target.image, target.product, step);
-    say(`Done: your ${target.model} runs Chad37 ${meta.version}. You can close this page.`, true);
+    say(`Done: your ${target.model} runs Chad37 ${meta.version}.`, true);
+    $("next").hidden = false;
     target = null;
     $("go").textContent = "Install";
   } catch (e) {

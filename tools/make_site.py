@@ -6,6 +6,8 @@
   index.html     the installer (site/index.html, with fm1-base's web/fm1pkg.js and web/fm1ota.js and the packages'
                  metadata inlined; Chrome or Edge, Web MIDI)
   logo.png       docs/chad37-logo.png
+  manual/        the user guide, docs/manual.md as a page (fm1-base's tools/manual_html.py); its links to the other
+                 docs go to them on GitHub
   firmware/      the release's packages, which the installer downloads: it picks the one for the keyboard it finds
 
   tools/make_site.py PKG_DIR VERSION OUT_DIR
@@ -18,6 +20,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +47,32 @@ def release_id(version):
     if not 1 <= len(parts) <= 3 or not all(p.isdigit() and int(p) < 100 for p in parts):
         raise SystemExit(f"version {version!r}: X.Y or X.Y.Z, each below 100")
     return "".join(f"{int(p):02d}" for p in (parts + ["0", "0"])[:3])
+
+
+def manual(out):
+    """docs/manual.md -> out/index.html. The manual is written for GitHub: its contents list links each section by
+    GitHub's anchor (#4-midi-implementation--controls). manual_html.py wants the contents as plain titles, which it
+    links itself, and names the numbered sections s1, s2 ...: so the contents lose their links, and a link to a numbered
+    section goes to #sN. A link to another doc (install.md) goes to it on GitHub"""
+    md = (ROOT / "docs" / "manual.md").read_text(encoding="utf-8")
+    md = re.sub(r"^(\d+\. )\[([^\]]+)\]\(#[^)]*\)$", r"\1\2", md, flags=re.M)
+    md = re.sub(r"\(#(\d+)-[^)]*\)", r"(#s\1)", md)
+    out.mkdir()
+    src = out / "_manual.md"
+    src.write_text(md, encoding="utf-8")
+    page = out / "index.html"
+    subprocess.run([sys.executable, str(ROOT / "base" / "tools" / "manual_html.py"), str(src), str(page),
+                    "--name", "Chad37", "--repo", REPO,
+                    "--tagline", "Chord-pad MIDI controller firmware for the M-Vave SMK-37"], check=True,
+                   capture_output=True)
+    src.unlink()
+    text = re.sub(r'href="([\w-]+\.md)(#[^"]*)?"', lambda m: f'href="{REPO}/blob/main/docs/{m[1]}{m[2] or ""}"',
+                  page.read_text(encoding="utf-8"))
+    ids = set(re.findall(r'id="([^"]+)"', text))
+    broken = sorted({h for h in re.findall(r'href="#([^"]+)"', text)} - ids)
+    if broken:
+        raise SystemExit(f"docs/manual.md: links to no section on the site's page: {', '.join(broken)}")
+    page.write_text(text, encoding="utf-8")
 
 
 def main(pkg_dir, version, out):
@@ -80,8 +109,9 @@ def main(pkg_dir, version, out):
         raise SystemExit("site/index.html: a {{...}} left unfilled")
     (out / "index.html").write_text(html.replace("/*LIB*/", lib).replace("/*META*/", meta), encoding="utf-8")
     shutil.copy(ROOT / "docs" / "chad37-logo.png", out / "logo.png")
+    manual(out / "manual")
     (out / ".nojekyll").write_text("")
-    print(f"site: {out}: index.html, logo.png, firmware/ ({', '.join(m['product'] for m in models)})")
+    print(f"site: {out}: index.html, logo.png, manual/, firmware/ ({', '.join(m['product'] for m in models)})")
 
 
 if __name__ == "__main__":

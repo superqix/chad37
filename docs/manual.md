@@ -130,8 +130,8 @@ Every MIDI message is sent simultaneously over **USB MIDI**, **Bluetooth MIDI** 
 | **16 Pads (NOTE mode)** | Pad Ch (`Ch 2` on Preset 1, `Ch 10` on Preset 2) | Note On / Off | Velocity `1`–`127` (scaled into `PAD MIN`–`127`). Note numbers depend on the preset's **Pad Map** (see below). |
 | **16 Pads (CHORD / SCALE)** | Chord Pad Ch (`KEYS` = Key Ch by default, or `Ch 1`–`16`) | Note On / Off | Plays the assigned custom chord (CHORD / Easy Chord) or diatonic scale chord (SCALE). |
 | **Pad Aftertouch** | Pad Ch *(or Chord Pad Ch in chord/scale modes)* | Channel Pressure (`0xDn`) | `0`–`127`. Starts sending once a held pad's pressure moves past its initial strike reading; returns to `0` when all pads are released. |
-| **Knobs Bank 1 (`K1`–`K8`)** | `Ch 6` | CC `48`–`55` | Absolute `0`–`127` (fixes stock firmware's relative `K7`–`K8`). |
-| **Knobs Bank 2 (`K9`–`K16`)** | `Ch 1` | CC `102`–`109` | Absolute `0`–`127` on undefined standard CCs (fixes stock firmware's relative `K9`–`K16`). |
+| **Knobs Bank 1 (`K1`–`K8`)** | `Ch 6` | CC `48`–`55` | Absolute `0`–`127` (fixes stock firmware's relative `K7`–`K8`). How far each click moves is set by **`KNOB SPEED`** (Hardware Setup `K7`); by default it accelerates as you turn faster. |
+| **Knobs Bank 2 (`K9`–`K16`)** | `Ch 1` | CC `102`–`109` | Absolute `0`–`127` on undefined standard CCs (fixes stock firmware's relative `K9`–`K16`). `KNOB SPEED` applies here too. |
 | **Faders Bank 1 (`F1`–`F4`)** | `Ch 1` | CC `20`–`23` | Absolute `0`–`127` on undefined standard CCs (fixes stock firmware's `CC 64`–`67` sustain/pedal collision). |
 | **Faders Bank 2 (`F5`–`F8`)** | `Ch 1` | CC `24`–`27` | Absolute `0`–`127`. |
 | **Pitch Wheel** | Key Ch (`Ch 1`) | Pitch Bend (`0xEn`) | `0`–`16383` (`8192` exact center, self-calibrating deadband). Displayed as `-127` to `+127`. |
@@ -402,7 +402,7 @@ On the **ARP** page, the bottom of the screen shows two rows of 8 step blocks ma
 
 ## 11. Menus & Settings Reference
 
-All knob ranges stop cleanly at their minimum and maximum values without wrapping around.
+On these pages each knob click moves a setting one step (`KNOB SPEED` doesn't apply), and ranges stop cleanly at their minimum and maximum values without wrapping around.
 
 ### EDIT Page (`PARA` Button — Per-Preset Settings)
 
