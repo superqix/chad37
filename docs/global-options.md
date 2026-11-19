@@ -1,6 +1,6 @@
 # Chad37 global options
 
-As built on 2026-11-17, read from `app/app.c` and `app/chord_scale.c`.
+As built on 2026-11-18, read from `app/app.c` and `app/chord_scale.c`.
 
 Global settings apply to the whole keyboard: changing preset doesn't change them. All of them are saved on the
 keyboard, about 2 seconds after the last change with nothing held, or right away with **SAVE**.
@@ -33,6 +33,7 @@ Press **GLOBE** a second time; a third press returns to the main view.
 | K3 | Curve | FACTORY, SOFT, HARD, FIXED | FACTORY | Key velocity curve. SOFT boosts light playing, HARD needs a harder strike, FIXED is always 100. |
 | K4 | Theme | GREEN, AMBER, CYAN, RED, MONO | AMBER | Screen accent colour. |
 | K6 | Pad min | OFF (1), 2–100 | OFF | Pad velocity floor: pad velocities are scaled into PAD MIN–127, keeping the dynamics. |
+| K7 | Knob speed | X1, X2, X4, X8, ACCEL | X1 | Value steps per detent for every knob that sends its CC (K1–K4, K6–K16), in every preset. ACCEL: 1 a detent turned slowly, 2 or 3 quicker, 6 when spun fast (detents under 30 ms apart). K5 (a pot) and the settings pages' own knobs aren't affected. |
 
 The page also shows four read-only values: **JACK** (raw pedal reading), **REST** (learned pedal rest), **ACTV**
 (sounding notes) and **PEND** (note-offs waiting to be sent).

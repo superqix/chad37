@@ -3,14 +3,36 @@
 Chad37 replaces the SMK-37's own firmware. You install it over USB from a computer, and you can go back to M-Vave's
 firmware at any time.
 
-> **Which keyboards:** Chad37 is in daily use on the **SMK-37 Elite**. The **SMK-37 Pro** and **MKE-P37** packages
-> are built from the same code but have never been installed on a real keyboard. Try them only if you're comfortable
-> going back to stock if something is wrong, and please open an issue either way.
+| Keyboard | Status |
+| :--- | :--- |
+| SMK-37 Elite | In daily use |
+| SMK-37 Pro | Tested by a user |
+| MKE-P37 | Built from the same code but never installed. Try it only if you're comfortable going back to stock if something is wrong, and please open an issue either way. |
 
-## What you need
+**The first install clears the stock firmware's settings**, such as your knob and pad MIDI assignments: write them
+down or take photos of them first. M-Vave's own firmware rebuilds its settings if you go back. Your calibration (keys,
+wheels, pads) is kept. Updating to a newer Chad37 keeps your presets, chord banks and settings.
 
-- Your SMK-37, and a USB cable that carries data (some charging cables don't).
-- A computer with **Python 3**: Windows, macOS or Linux.
+## The easy way: from your browser
+
+You need Chrome or Edge on Windows, macOS, Linux or Android (Safari, Firefox, iPhone and iPad can't do it), and a USB
+cable that carries data (some charging cables don't).
+
+1. Plug the keyboard in and switch it on. Quit everything that uses it: your DAW, synth apps, M-Vave's MIDI Suite,
+   other browser tabs.
+2. Open the **[Chad37 web installer](https://superqix.github.io/chad37/)** and press **Find my keyboard**. The
+   browser asks to control MIDI devices: allow it.
+3. The page shows your model and its firmware, and fetches the right package. Press **Install**, and don't unplug the
+   keyboard while it writes (a minute or two).
+
+When it's done, the keyboard shows the Chad37 face, then the main screen. If an install stops part way (cable out,
+computer asleep), press **Find my keyboard** again: the keyboard waits in update mode and the page finishes it.
+
+## The command-line way
+
+The same install from a terminal, with Python. It needs:
+
+- **Python 3**: Windows, macOS or Linux.
 - Python's MIDI libraries, installed once:
 
   ```bash
@@ -19,14 +41,16 @@ firmware at any time.
 
   On Windows, type `python` where this guide says `python3`.
 - From the [latest release](https://github.com/superqix/chad37/releases/latest): the installer, `fm1_install.py`,
-  and the package for your model (next step). Put them in the same folder, and open a terminal there.
+  and the package for your model (step 2). Put them in the same folder, and open a terminal there (not Python's own
+  window: the commands below go in the system's terminal, such as PowerShell or Terminal, not after Python's `>>>`
+  prompt).
 
-## 1. Close anything using the keyboard
+### 1. Close anything using the keyboard
 
 Quit every program that has the keyboard's MIDI ports open: your DAW, synth apps, M-Vave's MIDI Suite, and browser
 tabs using Web MIDI. The installer can't reach the keyboard while another program holds it.
 
-## 2. Find your model
+### 2. Find your model
 
 Plug the keyboard in, switch it on, and run:
 
@@ -45,7 +69,7 @@ package that matches:
 
 If you pick the wrong one, the installer refuses it before anything is written.
 
-## 3. Install
+### 3. Install
 
 ```bash
 python3 fm1_install.py chad37-smk37-elite-VERSION.fwsc
@@ -60,13 +84,10 @@ Use your own package's file name. Answer `y`. The installer:
 **Don't unplug the keyboard while it writes.** When it's done, the keyboard shows the Chad37 face, then the main
 screen.
 
-**The first install clears the stock firmware's settings.** M-Vave's own firmware rebuilds them if you go back.
-Your calibration (keys, wheels, pads) is kept.
-
 If the computer shows the keyboard under its old name afterwards, unplug it and plug it back in. On Windows the old
 name can stay until you remove the device in Device Manager.
 
-### Updating to a newer Chad37
+### Updating with the command line
 
 The same command with the new package. Your presets, chord banks and settings are kept.
 
@@ -96,9 +117,9 @@ This has been done on an Elite: it came back with its calibration, pitch-bend re
 | What you see | What to do |
 | :--- | :--- |
 | `not found` | Close every program using the keyboard's MIDI ports (step 1), check the cable, and try again. |
-| `needs mido and python-rtmidi` | Install them (see What you need). |
+| `needs mido and python-rtmidi` | Install them (see The command-line way). |
 | `the device is …, the package is for …` | That package is for another model: pick yours from step 2. |
-| The install stopped part way (cable out, computer asleep) | Run the same install command again: the keyboard waits in update mode, also after being switched off, and the installer finishes the write. |
+| The install stopped part way (cable out, computer asleep) | Press **Find my keyboard** on the web installer again, or run the same install command again: the keyboard waits in update mode, also after being switched off, and the installer finishes the write. |
 
 ## A full backup (optional, for the cautious)
 

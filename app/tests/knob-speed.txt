@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (C) 2026 Michael Wilson
+# KNOB SPEED (GLOBE twice: the hardware page, K7): how far a knob's value moves a detent, for every knob sending its CC
+# in every preset. X1 (the default) moves 1, X2 2, X4 4, X8 8; ACCEL moves 1 turned slowly and up to 6 turned fast.
+# The settings pages' own knobs keep 1 a detent. It is saved with the rest.
+wait 1200
+listen
+wait 30
+expect knob_speed 0
+
+# X1: K1 (CC 48 ch 6) one a detent
+out
+spin K1 3
+wait 30
+expect_out USB B5 30 03
+
+# The hardware page: K7 (ALGO) sets it; its own steps stay 1 a detent
+tap GLO
+wait 30
+tap GLO
+wait 30
+expect page 5
+spin ALGO 1
+wait 30
+expect knob_speed 1
+said X2
+shot hw-knob-speed.png
+tap HOME
+wait 30
+expect page 0
+
+# X2: three detents move 6
+out
+spin K1 3
+wait 30
+expect_out USB B5 30 09
+
+# X8: a detent moves 8, to the top in 15 detents; K7 on the main view sends its CC
+tap GLO
+wait 30
+tap GLO
+wait 30
+spin ALGO 2
+wait 30
+expect knob_speed 3
+said X8
+tap HOME
+wait 30
+out
+spin K1 1
+wait 30
+expect_out USB B5 30 11
+out
+spin K1 20
+wait 30
+expect_out USB B5 30 7F
+out
+spin ALGO 2
+wait 30
+expect_out USB B5 36 10
+
+# ACCEL: slow detents (200 ms apart) move 1, quick ones (20 ms) 6: the first of the quick ones comes after a pause
+tap GLO
+wait 30
+tap GLO
+wait 30
+spin ALGO 1
+wait 30
+expect knob_speed 4
+said ACCEL
+spin ALGO 5
+wait 30
+expect knob_speed 4
+tap HOME
+wait 30
+spin K2 -127
+wait 300
+out
+turn K2 3 200
+wait 30
+expect_out USB B5 31 03
+out
+turn K2 4 20
+wait 30
+expect_out USB B5 31 16
+
+# Kept over a restart; back to X1
+tap SAVE
+wait 100
+reboot
+wait 1200
+expect knob_speed 4
+tap GLO
+wait 30
+tap GLO
+wait 30
+spin ALGO -9
+wait 30
+expect knob_speed 0
+said X1
+tap HOME
+wait 30

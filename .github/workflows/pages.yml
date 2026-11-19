@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MPL-2.0
+# Chad37's web installer on GitHub Pages (https://superqix.github.io/chad37/), made from a release's packages by
+# tools/make_site.py: run on each published release, or by hand (Actions, "Installer page", Run workflow) for the latest.
+# Needs the repository's Pages source set to GitHub Actions (Settings, Pages).
+name: Installer page
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ !github.event.release.prerelease }}     # a pre-release never replaces the page's firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the release's packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          [ -n "$TAG" ] || TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.fwsc' --dir dl
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+      - name: Make the site
+        run: python3 tools/make_site.py dl "$VERSION" _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

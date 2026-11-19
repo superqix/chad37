@@ -169,7 +169,7 @@ Chad37 stores **8 presets** (`PRESET 1`–`PRESET 8`).
   - **Red:** presets you have used (Presets 1 and 2, plus any preset you have selected before).
   - **Green:** unused presets (Pads 3–8 that have never been selected).
 - **What belongs to a preset:** Key MIDI channel, Pad MIDI channel, Pad Map (`STOCK`, `DRUMS`, `V016`), and each knob's and fader's CC, channel, min/max range, and last knob values.
-- **What is shared across all presets:** the **16 Chord Banks** (256 chord pads total), plus global musical and hardware settings (Scale Root/Type, Voicing, Pad Flavor, Strum, Arpeggiator settings and rhythm pattern, Octave, Knob/Fader bank selection, Chord Pad Channel, Pedal mode, Velocity curve, Pad minimum velocity, and UI Theme).
+- **What is shared across all presets:** the **16 Chord Banks** (256 chord pads total), plus global musical and hardware settings (Scale Root/Type, Voicing, Pad Flavor, Strum, Arpeggiator settings and rhythm pattern, Octave, Knob/Fader bank selection, Chord Pad Channel, Pedal mode, Velocity curve, Pad minimum velocity, Knob speed, and UI Theme).
 
 ---
 
@@ -437,6 +437,7 @@ Press **GLOBE** a second time from the Global menu; press **GLOBE** a third time
 | **`K3`** | **`CURVE`** | `FACTORY`, `SOFT`, `HARD`, `FIXED` | `FACTORY` | Key and pad velocity response curve. **`SOFT`** boosts lighter touches, **`HARD`** requires a firmer strike, and **`FIXED`** sends velocity `100` before pad floor scaling. |
 | **`K4`** | **`THEME`** | `GREEN`, `AMBER`, `CYAN`, `RED`, `MONO` | `AMBER` | Changes the screen's UI color palette. |
 | **`K6`** | **`PAD MIN`** | `OFF` (`1`), `2`–`100` | `OFF` | Minimum velocity floor for the 16 pads. Scales pad strikes smoothly into `PAD MIN`–`127` while preserving full `127` peaks. |
+| **`K7`** | **`KNOB SPEED`** | `X1`, `X2`, `X4`, `X8`, `ACCEL` | `X1` | How far a knob's value moves per click, for every knob sending its CC (`K1`–`K4`, `K6`–`K16`) in every preset. `X1` moves `1` (a full `0`–`127` sweep is 127 clicks), `X2` moves `2`, `X4` moves `4`, `X8` moves `8`. **`ACCEL`** moves `1` per click when you turn slowly, for fine adjustments, and up to `6` when you turn fast, for sweeps. `K5` is a pot and isn't affected; nor are the knobs on these settings pages. Relative knobs send one message per step. |
 
 **Diagnostics readout on the Hardware Setup page:**
 - **`JACK`:** live raw 10-bit ADC reading (`0`–`1023`) from the rear 1/4" pedal jack.
@@ -457,5 +458,5 @@ Press **GLOBE** a second time from the Global menu; press **GLOBE** a third time
 
 - **Calibration:** the keys, wheels and pads use M-Vave's factory calibration, which Chad37 reads and never changes. The pitch wheel also finds its own centre at power-on.
 - **Button and knob map (`OCTAVE −` + `OCTAVE +` while switching the power on):** the screen asks you to press each button and turn each knob by its printed name, and saves which is which. The map is already right on a standard SMK-37, so this is only for recovery if buttons ever act as the wrong ones.
-- **Updating:** run the installer from your computer (see [install.md](install.md)). No button combination is needed.
+- **Updating:** open the [web installer](https://superqix.github.io/chad37/) in Chrome or Edge, or run the command-line installer (see [install.md](install.md)). No button combination is needed.
 - **Bootloader (`OCTAVE −` + `OCTAVE +` held for 5 seconds):** the screen counts down, then the keyboard restarts into the chip's own bootloader, a USB disk named `WL82 UBOOT`, used only for a full flash backup ([flash-backup.md](flash-backup.md)). **If your computer offers to format that disk, cancel.** Switch the keyboard off and on to leave it; if it then waits in update mode, run the installer again to finish.

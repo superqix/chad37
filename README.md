@@ -24,7 +24,8 @@ plays your synth, DAW or app. That leaves the firmware to do one job well: send 
 - **More:** 8 saved presets, pad velocity and pressure, two knob and fader
   banks, and big on-screen feedback as you play.
 
-**Status:** in daily use on an SMK-37 Elite, not yet released. The Pro and MKE-P37 builds have never been installed.
+**Status:** version 0.1, in daily use on an SMK-37 Elite and tested by a user on an SMK-37 Pro. The MKE-P37 build has
+never been installed.
 
 Built on [fm1-base](https://github.com/charlesvestal/fm1-base) and
 [felucca-bsp](https://github.com/hugelton/felucca-bsp), and forked from
@@ -76,10 +77,10 @@ gate, swing and the pattern's length.
 
 ## Installing
 
-Download the installer and your model's package from the
-[latest release](https://github.com/superqix/chad37/releases/latest), then follow the
-[install guide](docs/install.md). It takes a few minutes, over USB, from Windows, macOS or Linux, and you can go back
-to M-Vave's firmware at any time. The [user guide](docs/manual.md) covers every control, mode, and setting in detail.
+**[Install from your browser](https://superqix.github.io/chad37/)**: plug the keyboard in by USB, open the page in Chrome or Edge, and press
+Install. It finds your model and picks the right package, with nothing to set up. You can go back to M-Vave's firmware
+at any time. The [install guide](docs/install.md) has the details, and a command-line installer for those who prefer
+it. The [user guide](docs/manual.md) covers every control, mode, and setting in detail.
 
 ## Building from source
 
@@ -99,6 +100,13 @@ Each model has its own package in `build/chad37/` (`chad37-smk37.fwsc` for SMK-3
 
 ```bash
 python3 base/tools/fm1_install.py build/chad37/chad37-smk37-elite.fwsc
+```
+
+The web installer is `site/index.html`. `tools/make_site.py` builds the site from a release's packages, and
+`.github/workflows/pages.yml` publishes it to GitHub Pages each time a release is published:
+
+```bash
+python3 tools/make_site.py build/chad37 0.1 build/site
 ```
 
 ## Licence

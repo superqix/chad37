@@ -150,7 +150,8 @@ typedef struct {
     uint8_t arp_len;                     /* 1..16 pattern steps */
     uint16_t arp_rest;                   /* bit s: pattern step s+1 is a rest */
     uint16_t arp_accent;                 /* bit s: pattern step s+1 is accented */
-    uint8_t rsv_tail2[2];
+    uint8_t knob_speed;                  /* KNOB_* (2026-11-18, in what was reserved: 0, X1, in older stores) */
+    uint8_t rsv_tail2[1];
 } presets_store_t;
 
 #define STORE_LEN_PRE_CHORD_CH ((uint32_t)__builtin_offsetof(presets_store_t, chord_pad_ch))
@@ -179,6 +180,11 @@ static chord_banks_t cb;
 static cs_pad_chord_t *cur_bank(void) { return cb.pads[cb.active % NCHORD_BANKS]; }
 
 enum { SAVE_PRESETS = 1u, SAVE_BANKS = 2u };
+
+/* KNOB SPEED (HW page, K7): value steps a detent for K1-K4 and K6-K16 sending their CCs, every preset. ACCEL moves 1 a
+ * detent turned slowly, for fine moves, and up to 6 turned fast, for sweeps */
+enum { KNOB_X1, KNOB_X2, KNOB_X4, KNOB_X8, KNOB_ACCEL, NKNOB_SPEEDS };
+static const char *const KNOB_SPEED_N[NKNOB_SPEEDS] = {"X1", "X2", "X4", "X8", "ACCEL"};
 #define BANK_DEL_MS 5000u                /* an unanswered "DELETE BANK?" lapses after this */
 
 /* ------------------------------------------------------------------- UI --- */
@@ -228,6 +234,7 @@ static struct {
     uint8_t fader_val[NBANK_FADERS];     /* last value per fader across both banks */
     uint8_t master_seen;
     int32_t last_master;                 /* last 7-bit reading from plat_master() >> 5 */
+    uint32_t knob_at[NKNOBS];            /* plat_ms() each encoder last moved (KNOB SPEED ACCEL) */
     uint8_t ble_conn;
     int32_t pitch, mod;
     int pedal_raw, pedal_val;            /* raw ADC reading, and sent CC value (0..127) */
@@ -453,6 +460,8 @@ static int store_read(presets_store_t *s, int *grew)
     }
     if (s->chord_pad_ch > 16)
         s->chord_pad_ch = 0;
+    if (s->knob_speed >= NKNOB_SPEEDS)
+        s->knob_speed = KNOB_X1;
     if (s->arp_swing < CS_ARP_SWING_MIN || s->arp_swing > CS_ARP_SWING_MAX || s->arp_len < 1 ||
         s->arp_len > CS_ARP_STEPS)
         arp_rhythm_defaults(s);
@@ -1371,8 +1380,27 @@ static void page_knob_turn(int idx, int32_t e)
                 mark_dirty();
             }
             say_control("PAD MIN", m);
+        } else if (idx == 6) {
+            int32_t k = clamp((int32_t)st.knob_speed + e, 0, NKNOB_SPEEDS - 1);
+            if (k != st.knob_speed) {
+                st.knob_speed = (uint8_t)k;
+                mark_dirty();
+            }
+            app_say("KNOB SPEED", KNOB_SPEED_N[k]);
         }
     }
+}
+
+/* encoder i's detents (e) -> value steps at KNOB SPEED. ACCEL by the time since its last move: a detent every 120 ms
+ * or slower moves 1, quicker 2, 3, then 6 under 30 ms (about two turns a second) */
+static int32_t knob_steps(int i, int32_t e)
+{
+    static const uint8_t MUL[NKNOB_SPEEDS] = {1, 2, 4, 8, 1};
+    uint32_t now = plat_ms(), dt = now - ui.knob_at[i];
+    ui.knob_at[i] = now;
+    if (st.knob_speed == KNOB_ACCEL)
+        return e * (dt < 30u ? 6 : dt < 60u ? 3 : dt < 120u ? 2 : 1);
+    return e * MUL[st.knob_speed % NKNOB_SPEEDS];
 }
 
 static void knobs_input(void)
@@ -1417,17 +1445,18 @@ static void knobs_input(void)
             if (!e)
                 continue;
             if (ui.page != PG_MAIN && (i < 4 || ((ui.page == PG_HW || ui.page == PG_GLOBAL) && i == 5) ||
-                                        (ui.page == PG_ARP && i >= 5))) {
-                /* K6: PAD MIN on HW, CHORD PAD CH on GLOBAL; K6-K8: GATE, SWING, STEPS on ARP */
+                                        (ui.page == PG_HW && i == 6) || (ui.page == PG_ARP && i >= 5))) {
+                /* K6: PAD MIN on HW, CHORD PAD CH on GLOBAL; K7: KNOB SPEED on HW; K6-K8: GATE, SWING, STEPS on ARP */
                 page_knob_turn(i, e);
                 continue;
             }
+            e = knob_steps(i, e);
         }
         if (pr->knob_rel[idx]) {
             uint32_t dir_val = e > 0 ? REL_RIGHT : REL_LEFT;
             int32_t steps = e > 0 ? e : -e;
-            if (steps > 8)
-                steps = 8;
+            if (steps > 16)
+                steps = 16;
             while (steps--)
                 send(0xB0u | pr->knob_ch[idx], pr->knob_cc[idx], dir_val);
             pr->knob_val[idx] = (uint8_t)clamp(v + e, pr->knob_min[idx], pr->knob_max[idx]);
@@ -2405,10 +2434,18 @@ static void draw_hw_body(void)
     value_cell(178, 72, "PEND", note_refs_pending(&ui.nr), 0);
 
     {
-        char t[32] = "K6 PAD MIN VEL: ";
-        int_text(st.pad_vel_min > 1u ? st.pad_vel_min : 1, t + 16);
-        if (st.pad_vel_min <= 1u)
-            copy_str(t + 16, sizeof t - 16, "OFF");
+        char t[48] = "K6 PAD MIN: ";
+        uint32_t n = 12;
+        if (st.pad_vel_min > 1u)
+            int_text(st.pad_vel_min, t + n);
+        else
+            copy_str(t + n, sizeof t - n, "OFF");
+        while (t[n])
+            n++;
+        copy_str(t + n, sizeof t - n, "   K7 KNOB SPEED: ");
+        while (t[n])
+            n++;
+        copy_str(t + n, sizeof t - n, KNOB_SPEED_N[st.knob_speed % NKNOB_SPEEDS]);
         cv_text(4, 102, &FONT_XS, t, C_GRAY);
     }
     cv_text(4, 126, &FONT_T, "PATCH: MAIN VIEW   FX: ALL NOTES OFF", C_AMB);
@@ -2695,6 +2732,8 @@ int app_expect(const char *what, int *got)
         *got = st.k5_mode;
     else if (!strcmp(what, "pad_vel_min"))
         *got = st.pad_vel_min;
+    else if (!strcmp(what, "knob_speed"))
+        *got = st.knob_speed;
     else if (!strcmp(what, "page"))
         *got = ui.page;
     else if (!strcmp(what, "store_migrate"))
