@@ -1,18 +1,37 @@
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (C) 2026 Michael Wilson
 # KNOB SPEED (GLOBE twice: the hardware page, K7): how far a knob's value moves a detent, for every knob sending its CC
-# in every preset. X1 (the default) moves 1, X2 2, X4 4, X8 8; ACCEL moves 1 turned slowly and up to 6 turned fast.
-# The settings pages' own knobs keep 1 a detent. It is saved with the rest.
+# in every preset. ACCEL (the default) follows the turn's speed: 1 a detent turned slowly, up to 12 spun fast; X1, X2,
+# X4 and X8 move 1, 2, 4 and 8. The settings pages' own knobs keep 1 a detent. It is saved with the rest.
+# ("spin" turns a knob's detents all at once and exactly, unaccelerated; "turn" spaces them in time, as a hand does.)
 wait 1200
 listen
 wait 30
 expect knob_speed 0
 
-# X1: K1 (CC 48 ch 6) one a detent
+# ACCEL, slowly (a detent every 250 ms): K2 (CC 49 ch 6) one a detent, for fine moves
 out
-spin K1 3
+turn K2 5 250
 wait 30
-expect_out USB B5 30 03
+expect_out USB B5 31 05
+
+# ... spun fast (40 detents a second): it speeds up over a few detents and sweeps to the top in 20
+out
+turn K2 20 25
+wait 30
+expect_out USB B5 31 7F
+
+# ... and turned back slowly, one a detent again
+out
+turn K2 -3 250
+wait 30
+expect_out USB B5 31 7C
+
+# ... at 10 detents a second, about twice a detent once under way: 10 detents move 18
+out
+turn K3 10 100
+wait 30
+expect_out USB B5 32 12
 
 # The hardware page: K7 (ALGO) sets it; its own steps stay 1 a detent
 tap GLO
@@ -20,20 +39,36 @@ wait 30
 tap GLO
 wait 30
 expect page 5
-spin ALGO 1
+turn ALGO 1 20
 wait 30
 expect knob_speed 1
-said X2
-shot hw-knob-speed.png
+said X1
 tap HOME
 wait 30
 expect page 0
 
+# X1: K1 (CC 48) one a detent, however fast
+out
+turn K1 6 20
+wait 30
+expect_out USB B5 30 06
+
 # X2: three detents move 6
+tap GLO
+wait 30
+tap GLO
+wait 30
+spin ALGO 1
+wait 30
+expect knob_speed 2
+said X2
+shot hw-knob-speed.png
+tap HOME
+wait 30
 out
 spin K1 3
 wait 30
-expect_out USB B5 30 09
+expect_out USB B5 30 0C
 
 # X8: a detent moves 8, to the top in 15 detents; K7 on the main view sends its CC
 tap GLO
@@ -42,14 +77,14 @@ tap GLO
 wait 30
 spin ALGO 2
 wait 30
-expect knob_speed 3
+expect knob_speed 4
 said X8
 tap HOME
 wait 30
 out
 spin K1 1
 wait 30
-expect_out USB B5 30 11
+expect_out USB B5 30 14
 out
 spin K1 20
 wait 30
@@ -59,32 +94,7 @@ spin ALGO 2
 wait 30
 expect_out USB B5 36 10
 
-# ACCEL: slow detents (200 ms apart) move 1, quick ones (20 ms) 6: the first of the quick ones comes after a pause
-tap GLO
-wait 30
-tap GLO
-wait 30
-spin ALGO 1
-wait 30
-expect knob_speed 4
-said ACCEL
-spin ALGO 5
-wait 30
-expect knob_speed 4
-tap HOME
-wait 30
-spin K2 -127
-wait 300
-out
-turn K2 3 200
-wait 30
-expect_out USB B5 31 03
-out
-turn K2 4 20
-wait 30
-expect_out USB B5 31 16
-
-# Kept over a restart; back to X1
+# Kept over a restart; back to ACCEL, the first choice
 tap SAVE
 wait 100
 reboot
@@ -97,6 +107,6 @@ wait 30
 spin ALGO -9
 wait 30
 expect knob_speed 0
-said X1
+said ACCEL
 tap HOME
 wait 30

@@ -89,6 +89,9 @@ enum { CURVE_FACTORY, CURVE_SOFT, CURVE_HARD, CURVE_FIXED, NCURVES };
 enum { PG_MAIN, PG_EDIT, PG_GLOBAL, PG_SCALE, PG_ARP, PG_HW, NPAGES };
 enum { CHORD_HELP_NONE, CHORD_HELP_ASSIGN, CHORD_HELP_EASY };
 enum { REC_OFF, REC_ASSIGN, REC_ERASE };         /* SEQ REC in chord modes: off -> ASSIGN -> ERASE -> off */
+#define ACCEL_IDLE_MS 200u               /* ACCEL: a longer pause between detents starts a new turn, at 1 a detent */
+#define ACCEL_SLOW 6                     /* ACCEL: detents a second at or under which a detent moves 1 */
+#define ACCEL_MAX 12                     /* ACCEL: the most a detent moves */
 #define TAP_N 5u                         /* tap tempo averages the last 4 gaps */
 #define TAP_RESET_MS 1600u               /* a longer pause starts a new count (under 40 BPM's 1500 ms) */
 
@@ -150,7 +153,7 @@ typedef struct {
     uint8_t arp_len;                     /* 1..16 pattern steps */
     uint16_t arp_rest;                   /* bit s: pattern step s+1 is a rest */
     uint16_t arp_accent;                 /* bit s: pattern step s+1 is accented */
-    uint8_t knob_speed;                  /* KNOB_* (2026-11-18, in what was reserved: 0, X1, in older stores) */
+    uint8_t knob_speed;                  /* KNOB_* (2026-11-18, in what was reserved: 0, ACCEL, in older stores) */
     uint8_t rsv_tail2[1];
 } presets_store_t;
 
@@ -181,10 +184,10 @@ static cs_pad_chord_t *cur_bank(void) { return cb.pads[cb.active % NCHORD_BANKS]
 
 enum { SAVE_PRESETS = 1u, SAVE_BANKS = 2u };
 
-/* KNOB SPEED (HW page, K7): value steps a detent for K1-K4 and K6-K16 sending their CCs, every preset. ACCEL moves 1 a
- * detent turned slowly, for fine moves, and up to 6 turned fast, for sweeps */
-enum { KNOB_X1, KNOB_X2, KNOB_X4, KNOB_X8, KNOB_ACCEL, NKNOB_SPEEDS };
-static const char *const KNOB_SPEED_N[NKNOB_SPEEDS] = {"X1", "X2", "X4", "X8", "ACCEL"};
+/* KNOB SPEED (HW page, K7): value steps a detent for K1-K4 and K6-K16 sending their CCs, every preset. ACCEL follows
+ * how fast the knob turns: 1 a detent turned slowly, for fine moves, rising smoothly to 12 spun fast, for sweeps */
+enum { KNOB_ACCEL, KNOB_X1, KNOB_X2, KNOB_X4, KNOB_X8, NKNOB_SPEEDS };   /* ACCEL, the default, is 0: older stores */
+static const char *const KNOB_SPEED_N[NKNOB_SPEEDS] = {"ACCEL", "X1", "X2", "X4", "X8"};
 #define BANK_DEL_MS 5000u                /* an unanswered "DELETE BANK?" lapses after this */
 
 /* ------------------------------------------------------------------- UI --- */
@@ -235,6 +238,9 @@ static struct {
     uint8_t master_seen;
     int32_t last_master;                 /* last 7-bit reading from plat_master() >> 5 */
     uint32_t knob_at[NKNOBS];            /* plat_ms() each encoder last moved (KNOB SPEED ACCEL) */
+    uint16_t knob_rate[NKNOBS];          /* ACCEL: each encoder's speed, detents a second x16, smoothed */
+    uint8_t knob_frac[NKNOBS];           /* ACCEL: the part of a step carried to the next detent, /16 */
+    int8_t knob_dir[NKNOBS];             /* ACCEL: the way it last turned, +1 / -1 */
     uint8_t ble_conn;
     int32_t pitch, mod;
     int pedal_raw, pedal_val;            /* raw ADC reading, and sent CC value (0..127) */
@@ -461,7 +467,7 @@ static int store_read(presets_store_t *s, int *grew)
     if (s->chord_pad_ch > 16)
         s->chord_pad_ch = 0;
     if (s->knob_speed >= NKNOB_SPEEDS)
-        s->knob_speed = KNOB_X1;
+        s->knob_speed = KNOB_ACCEL;
     if (s->arp_swing < CS_ARP_SWING_MIN || s->arp_swing > CS_ARP_SWING_MAX || s->arp_len < 1 ||
         s->arp_len > CS_ARP_STEPS)
         arp_rhythm_defaults(s);
@@ -1391,16 +1397,41 @@ static void page_knob_turn(int idx, int32_t e)
     }
 }
 
-/* encoder i's detents (e) -> value steps at KNOB SPEED. ACCEL by the time since its last move: a detent every 120 ms
- * or slower moves 1, quicker 2, 3, then 6 under 30 ms (about two turns a second) */
+/* encoder i's detents (e) -> value steps at KNOB SPEED. ACCEL: the knob's speed (detents since its last move over the
+ * time since, averaged with the speed before, so a turn speeds up over a few detents and slows as quickly) sets the
+ * gain: 1 up to ACCEL_SLOW detents a second, then 1 more for every 3 more a second (10 a second: 2.3, 20: 5.6), up to
+ * ACCEL_MAX. The gain's fractions carry over between detents; after a pause (ACCEL_IDLE_MS) or a turn back, the first
+ * detent moves 1 and the speed is measured again from there */
 static int32_t knob_steps(int i, int32_t e)
 {
-    static const uint8_t MUL[NKNOB_SPEEDS] = {1, 2, 4, 8, 1};
-    uint32_t now = plat_ms(), dt = now - ui.knob_at[i];
+    static const uint8_t MUL[NKNOB_SPEEDS] = {1, 1, 2, 4, 8};
+    uint32_t now = plat_ms(), dt = now - ui.knob_at[i], n = (uint32_t)(e < 0 ? -e : e), inst, gain, acc;
+    int8_t dir = e < 0 ? -1 : 1;
     ui.knob_at[i] = now;
-    if (st.knob_speed == KNOB_ACCEL)
-        return e * (dt < 30u ? 6 : dt < 60u ? 3 : dt < 120u ? 2 : 1);
-    return e * MUL[st.knob_speed % NKNOB_SPEEDS];
+    if (st.knob_speed != KNOB_ACCEL)
+        return e * MUL[st.knob_speed % NKNOB_SPEEDS];
+#ifdef PLAT_HOST
+    if (plat_host_exact)                                     /* a script's "spin": the detents exactly, unaccelerated */
+        return e;
+#endif
+    if (dt > ACCEL_IDLE_MS || dir != ui.knob_dir[i]) {       /* a new turn: its first detents move 1 each */
+        ui.knob_dir[i] = dir;
+        ui.knob_rate[i] = 0;
+        ui.knob_frac[i] = 0;
+        return e;
+    }
+    inst = n * 16000u / (dt ? dt : 1u);                      /* detents a second x16 */
+    if (inst > 200u * 16u)
+        inst = 200u * 16u;
+    ui.knob_rate[i] = (uint16_t)((ui.knob_rate[i] + inst) / 2u);
+    gain = 16u;                                              /* x16 */
+    if (ui.knob_rate[i] > ACCEL_SLOW * 16u)
+        gain += (ui.knob_rate[i] - ACCEL_SLOW * 16u) / 3u;
+    if (gain > ACCEL_MAX * 16u)
+        gain = ACCEL_MAX * 16u;
+    acc = ui.knob_frac[i] + n * gain;
+    ui.knob_frac[i] = (uint8_t)(acc % 16u);
+    return dir * (int32_t)(acc / 16u);
 }
 
 static void knobs_input(void)
@@ -2421,33 +2452,26 @@ static void draw_hw_body(void)
     static const char *const K5_N[NK5_MODES] = {"CC+VOL", "CC ONLY"};
     static const char *const CRV_N[NCURVES] = {"FACTORY", "SOFT", "HARD", "FIXED"};
 
+    char pm[8], vol[8];
+    if (st.pad_vel_min > 1u)
+        int_text(st.pad_vel_min, pm);
+    else
+        copy_str(pm, sizeof pm, "OFF");
+    int_text(st.k5_mode == K5_CC_ONLY ? 100 : (int32_t)(plat_master() * 100u / 4096u), vol);
+
     cv_begin(240, 144, C_BLACK);
-    cv_text(4, 2, &FONT_B, "HARDWARE SETUP (K1-K4)", C_WHITE);
+    cv_text(4, 2, &FONT_B, "HARDWARE SETUP", C_WHITE);
     choice_cell(4, 24, "K1 PEDAL", PDL_N[st.pedal_mode]);
     choice_cell(62, 24, "K2 K5", K5_N[st.k5_mode]);
     choice_cell(120, 24, "K3 CURVE", CRV_N[st.vel_curve]);
     choice_cell(178, 24, "K4 THEME", PALETTES[st.theme].name);
+    /* K5 is the volume pot (shown, not a setting); K8 is free for a setting to come */
+    choice_cell(4, 66, "K5 VOL", vol);
+    choice_cell(62, 66, "K6 PADMIN", pm);
+    choice_cell(120, 66, "K7 SPEED", KNOB_SPEED_N[st.knob_speed % NKNOB_SPEEDS]);
+    cv_rect(178, 66, 56, 36, C_LINE);
+    cv_text(182, 69, &FONT_XS, "K8", C_DIM);
 
-    value_cell(4, 72, "JACK", ui.pedal_raw, 0);
-    value_cell(62, 72, "REST", ui.jack_init ? ui.jack_rest : -1, 0);
-    value_cell(120, 72, "ACTV", (int32_t)note_refs_active(&ui.nr), 0);
-    value_cell(178, 72, "PEND", note_refs_pending(&ui.nr), 0);
-
-    {
-        char t[48] = "K6 PAD MIN: ";
-        uint32_t n = 12;
-        if (st.pad_vel_min > 1u)
-            int_text(st.pad_vel_min, t + n);
-        else
-            copy_str(t + n, sizeof t - n, "OFF");
-        while (t[n])
-            n++;
-        copy_str(t + n, sizeof t - n, "   K7 KNOB SPEED: ");
-        while (t[n])
-            n++;
-        copy_str(t + n, sizeof t - n, KNOB_SPEED_N[st.knob_speed % NKNOB_SPEEDS]);
-        cv_text(4, 102, &FONT_XS, t, C_GRAY);
-    }
     cv_text(4, 126, &FONT_T, "PATCH: MAIN VIEW   FX: ALL NOTES OFF", C_AMB);
     cv_blit(0, 36);
 }
@@ -2460,17 +2484,34 @@ static void draw_footer(const preset_t *pr)
     cv_begin(240, 60, C_BLACK);
     cv_line(0, 0, 239, 0, C_LINE);
 
-    /* 37-key mini indicator (x = 9..230, 6 px pitch) */
-    for (k = 0; k < SMK_NKEYBED; k++) {
-        uint16_t c = (ui.keys_on >> k & 1u) ? C_HI : C_LINE;
-        cv_rect(9 + (int32_t)k * 6, 6, 5, 14, c);
-    }
+    if (ui.page == PG_HW) {
+        /* Hardware Setup: its diagnostics in place of the keys and pads (the pedal jack's reading and learned rest,
+         * the notes sounding, the note-offs waiting) */
+        static const char *const DN[4] = {"JACK", "REST", "ACTV", "PEND"};
+        int32_t dv[4];
+        dv[0] = ui.pedal_raw;
+        dv[1] = ui.jack_init ? ui.jack_rest : -1;
+        dv[2] = (int32_t)note_refs_active(&ui.nr);
+        dv[3] = note_refs_pending(&ui.nr);
+        for (k = 0; k < 4u; k++) {
+            int32_t x = 8 + (int32_t)k * 58;
+            cv_text(x, 16, &FONT_XS, DN[k], C_GRAY);
+            int_text(dv[k], t);
+            cv_text(x + text_w(&FONT_XS, DN[k]) + 5, 16, &FONT_XS, t, C_HI);
+        }
+    } else {
+        /* 37-key mini indicator (x = 9..230, 6 px pitch) */
+        for (k = 0; k < SMK_NKEYBED; k++) {
+            uint16_t c = (ui.keys_on >> k & 1u) ? C_HI : C_LINE;
+            cv_rect(9 + (int32_t)k * 6, 6, 5, 14, c);
+        }
 
-    /* 16-pad mini indicator (x = 9..232, 14 px pitch) */
-    for (p = 0; p < SMK_NPADS; p++) {
-        int assigned = ui.chord_on ? (cur_bank()[p].count > 0) : 1;
-        uint16_t c = (ui.pads_on >> p & 1u) ? C_HI : assigned ? C_DIM : C_LINE;
-        cv_rect(9 + (int32_t)p * 14, 24, 12, 8, c);
+        /* 16-pad mini indicator (x = 9..232, 14 px pitch) */
+        for (p = 0; p < SMK_NPADS; p++) {
+            int assigned = ui.chord_on ? (cur_bank()[p].count > 0) : 1;
+            uint16_t c = (ui.pads_on >> p & 1u) ? C_HI : assigned ? C_DIM : C_LINE;
+            cv_rect(9 + (int32_t)p * 14, 24, 12, 8, c);
+        }
     }
 
     /* Bottom status bar: OCT, KEY CH, PAD CH, active page */

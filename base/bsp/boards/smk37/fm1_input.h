@@ -387,10 +387,11 @@ static void smk__encoders(void)                    /* stock decoder: 3-state win
             fm1_in.enc_hist[e] = (uint8_t)(cur * 0x15u);
             continue;
         }
-        if (cur != fm1_in.enc_last[e]) {            /* must hold for two frames */
-            fm1_in.enc_last[e] = (uint8_t)cur;
-            continue;
-        }
+        /* A reading counts in the frame it is seen. The stock decoder also wanted it in two frames running, but its
+         * frames are 0.1 ms: in our 1.6 ms frames that hold (3.2 ms) lost a fast spin's short states, and past about
+         * 50-80 detents a second the knob all but stopped. The three-state window below rejects contact bounce on its
+         * own (a bounce between two neighbouring states makes no valid window) */
+        fm1_in.enc_last[e] = (uint8_t)cur;
         if (cur == (fm1_in.enc_hist[e] & 3u))
             continue;
         h = ((uint32_t)fm1_in.enc_hist[e] << 2 | cur) & 0x3Fu;

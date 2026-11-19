@@ -33,9 +33,10 @@ Press **GLOBE** a second time; a third press returns to the main view.
 | K3 | Curve | FACTORY, SOFT, HARD, FIXED | FACTORY | Key velocity curve. SOFT boosts light playing, HARD needs a harder strike, FIXED is always 100. |
 | K4 | Theme | GREEN, AMBER, CYAN, RED, MONO | AMBER | Screen accent colour. |
 | K6 | Pad min | OFF (1), 2–100 | OFF | Pad velocity floor: pad velocities are scaled into PAD MIN–127, keeping the dynamics. |
-| K7 | Knob speed | X1, X2, X4, X8, ACCEL | X1 | Value steps per detent for every knob that sends its CC (K1–K4, K6–K16), in every preset. ACCEL: 1 a detent turned slowly, 2 or 3 quicker, 6 when spun fast (detents under 30 ms apart). K5 (a pot) and the settings pages' own knobs aren't affected. |
+| K7 | Knob speed | ACCEL, X1, X2, X4, X8 | ACCEL | Value steps per detent for every knob that sends its CC (K1–K4, K6–K16), in every preset. ACCEL follows the turn's speed, averaged over the last few detents: 1 a detent up to 6 detents a second, then 1 more for every 3 more a second (about 2 at 10 a second, 5.6 at 20), up to 12; fractions carry over. A pause over 200 ms or a turn back starts again at 1. K5 (a pot) and the settings pages' own knobs aren't affected. Older stores, which had no setting, load with ACCEL. |
 
-The page also shows four read-only values: **JACK** (raw pedal reading), **REST** (learned pedal rest), **ACTV**
+K5's cell shows the USB audio volume, and K8's is empty. Along the bottom, in place of the keys and pads, the page
+shows four read-only values: **JACK** (raw pedal reading), **REST** (learned pedal rest), **ACTV**
 (sounding notes) and **PEND** (note-offs waiting to be sent).
 
 ## 3. Other keyboard-wide settings

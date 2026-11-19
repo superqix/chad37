@@ -437,9 +437,11 @@ Press **GLOBE** a second time from the Global menu; press **GLOBE** a third time
 | **`K3`** | **`CURVE`** | `FACTORY`, `SOFT`, `HARD`, `FIXED` | `FACTORY` | Key and pad velocity response curve. **`SOFT`** boosts lighter touches, **`HARD`** requires a firmer strike, and **`FIXED`** sends velocity `100` before pad floor scaling. |
 | **`K4`** | **`THEME`** | `GREEN`, `AMBER`, `CYAN`, `RED`, `MONO` | `AMBER` | Changes the screen's UI color palette. |
 | **`K6`** | **`PAD MIN`** | `OFF` (`1`), `2`–`100` | `OFF` | Minimum velocity floor for the 16 pads. Scales pad strikes smoothly into `PAD MIN`–`127` while preserving full `127` peaks. |
-| **`K7`** | **`KNOB SPEED`** | `X1`, `X2`, `X4`, `X8`, `ACCEL` | `X1` | How far a knob's value moves per click, for every knob sending its CC (`K1`–`K4`, `K6`–`K16`) in every preset. `X1` moves `1` (a full `0`–`127` sweep is 127 clicks), `X2` moves `2`, `X4` moves `4`, `X8` moves `8`. **`ACCEL`** moves `1` per click when you turn slowly, for fine adjustments, and up to `6` when you turn fast, for sweeps. `K5` is a pot and isn't affected; nor are the knobs on these settings pages. Relative knobs send one message per step. |
+| **`K7`** | **`KNOB SPEED`** | `ACCEL`, `X1`, `X2`, `X4`, `X8` | `ACCEL` | How far a knob's value moves per click, for every knob sending its CC (`K1`–`K4`, `K6`–`K16`) in every preset. **`ACCEL`** follows how fast you turn: `1` per click when you turn slowly, for fine adjustments, rising smoothly to `12` per click when you spin it, so a quick spin sweeps `0`–`127` in about a dozen clicks. The first click after a pause or a change of direction always moves `1`. `X1` always moves `1` (a full sweep is 127 clicks), `X2` moves `2`, `X4` moves `4`, `X8` moves `8`. `K5` is a pot and isn't affected; nor are the knobs on these settings pages. Relative knobs send one message per step. |
 
-**Diagnostics readout on the Hardware Setup page:**
+The page shows its settings as two rows of cells, one per knob. **`K5`**'s cell shows the USB audio volume (`VOL`; `K5` is the volume knob, not a setting here), and **`K8`**'s is empty for now.
+
+**Diagnostics readout along the bottom of the Hardware Setup page** (in place of the keys and pads):
 - **`JACK`:** live raw 10-bit ADC reading (`0`–`1023`) from the rear 1/4" pedal jack.
 - **`REST`:** the auto-learned resting value of the sustain pedal (`-1` until learned).
 - **`ACTV`:** total number of currently sounding MIDI notes across all channels.
