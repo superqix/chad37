@@ -30,6 +30,9 @@ predictable MIDI.
 **Status:** version 0.2, in daily use on an SMK-37 Elite and tested by a user on an SMK-37 Pro. The MKE-P37 build has
 never been installed.
 
+**Community:** join the [Chad37 Discord](https://discord.gg/nrXHVvR7p) to ask questions, share what you make, and
+hear what's coming next.
+
 Built on [fm1-base](https://github.com/charlesvestal/fm1-base) and
 [felucca-bsp](https://github.com/hugelton/felucca-bsp), and forked from
 [Erik37](https://github.com/genkigenki/erik37). The name is a nod to Erik37 and short for CHord pAD.
