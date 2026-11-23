@@ -28,6 +28,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = "https://github.com/superqix/chad37"
+SIMULATOR = "https://mutant.cloud/?device=smk37#/try/chad37"   # Chad37 running on a simulated SMK-37
+DISCORD = "https://discord.gg/nrXHVvR7p"
 MODELS = {"smk37": "SMK-37 Pro", "smk37-elite": "SMK-37 Elite", "smk37-mke": "MKE-P37"}   # package name -> model
 BLOCKS, BLK, KEEP = 20, 0x30, 0x2F
 
@@ -105,7 +107,8 @@ def main(pkg_dir, version, out):
     for mark in ("/*LIB*/", "/*META*/"):
         if html.count(mark) != 1:
             raise SystemExit(f"site/index.html must contain {mark} once")
-    for key, val in (("VERSION", version), ("REPO", REPO), ("REPO_SHORT", re.sub(r"^https?://", "", REPO))):
+    for key, val in (("VERSION", version), ("REPO", REPO), ("REPO_SHORT", re.sub(r"^https?://", "", REPO)),
+                     ("SIMULATOR", SIMULATOR), ("DISCORD", DISCORD)):
         html = html.replace("{{" + key + "}}", val)
     if "{{" in html:
         raise SystemExit("site/index.html: a {{...}} left unfilled")

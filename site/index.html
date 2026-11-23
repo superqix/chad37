@@ -69,6 +69,8 @@
   .shot { margin: 16px 0 0; }
   .shot img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
   .shot figcaption { margin-top: 8px; font-size: 13px; color: var(--dim); }
+  .simlink { margin: 16px 0 0; }
+  .simlink a { font-weight: 600; }
   .sponsors { display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: center; margin: 4px 0 16px; }
   .sponsors img { display: block; height: 48px; width: auto; max-width: 100%; }
   .warn { border-left: 4px solid var(--accent); padding: 4px 0 4px 12px; margin: 16px 0; }
@@ -90,7 +92,8 @@
     <div>
       <h1>Chad37 {{VERSION}}</h1>
       <p class="tag">MIDI controller firmware for the M-Vave SMK-37, with your own chords on the pads</p>
-      <p class="links"><a href="manual/">User guide</a> · <a href="{{REPO}}">Source</a> ·
+      <p class="links"><a href="manual/">User guide</a> · <a href="{{SIMULATOR}}">Try it online</a> ·
+        <a href="{{DISCORD}}">Discord</a> · <a href="{{REPO}}">Source</a> ·
         <a href="{{REPO}}/releases/tag/v{{VERSION}}">What's new</a></p>
     </div>
   </header>
@@ -129,6 +132,8 @@
         alt="Four Chad37 screens. Chord mode waiting: PLAY A CHORD, with SEQ REC then tap a pad to assign it. Chord mode playing: C MAJ in large letters, with C4, E4 and G4 lit on a keyboard. Easy Chord's quick start: C equals C major, with the modifier keys sus4, minor, 7 and maj7 to the left of the root. Easy Chord playing: C MIN7, with C4, D sharp 4, G4 and A sharp 4 lit."></a>
       <figcaption>The chord screens, from the simulator. Tap the picture for full size.</figcaption>
     </figure>
+    <p class="simlink"><a href="{{SIMULATOR}}">Try Chad37 in the simulator</a>: an SMK-37 in your browser, running
+      Chad37, with nothing to install.</p>
   </section>
 
   <section class="card" aria-labelledby="before-h">
@@ -181,6 +186,8 @@
     <p><a href="manual/">User guide</a>: every control, mode and setting.</p>
     <p><a href="{{REPO}}/releases/tag/v{{VERSION}}">Release notes and downloads</a>, with the command-line installer
       for those who prefer it (<a href="{{REPO}}/blob/main/docs/install.md">install guide</a>).</p>
+    <p><a href="{{SIMULATOR}}">Simulator</a>: try Chad37 in your browser before you install it.</p>
+    <p><a href="{{DISCORD}}">Discord</a>: ask questions, share what you make, and hear what's coming next.</p>
     <p><a href="{{REPO}}/issues">Report a problem or tell us it worked</a>.</p>
   </section>
 
